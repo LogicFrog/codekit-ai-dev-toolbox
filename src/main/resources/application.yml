@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: codekit
+  threads:
+    virtual:
+      enabled: true  # <--- 启用虚拟线程支持
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/codekit?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
+    username: root
+    password: 12345678
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      password:
+codekit:
+  watch:
+    enabled: true                  # 开关（可选，默认开启）
+    path: /Users/annu/Documents/project  # 你的项目路径（必填）
+    interval: 5000                 # 轮询间隔（可选，默认3000）
