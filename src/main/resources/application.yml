@@ -1,14 +1,16 @@
 spring:
   application:
     name: codekit
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
   threads:
     virtual:
-      enabled: true  # <--- 启用虚拟线程支持
+      enabled: true
 
   datasource:
-    url: jdbc:mysql://localhost:3306/codekit?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
-    username: root
-    password: 12345678
+    url: ${CODEKIT_DB_URL:jdbc:mysql://localhost:3306/codekit?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true}
+    username: ${CODEKIT_DB_USERNAME:}
+    password: ${CODEKIT_DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -22,12 +24,18 @@ spring:
 
   data:
     redis:
-      host: localhost
-      port: 6379
-      database: 0
-      password:
+      host: ${CODEKIT_REDIS_HOST:localhost}
+      port: ${CODEKIT_REDIS_PORT:6379}
+      database: ${CODEKIT_REDIS_DATABASE:0}
+      password: ${CODEKIT_REDIS_PASSWORD:}
+
 codekit:
   watch:
-    enabled: true                  # 开关（可选，默认开启）
-    path: /Users/annu/Documents/project  # 你的项目路径（必填）
-    interval: 5000                 # 轮询间隔（可选，默认3000）
+    enabled: ${CODEKIT_WATCH_ENABLED:true}
+    path: ${CODEKIT_WATCH_PATH:}
+    interval: ${CODEKIT_WATCH_INTERVAL:5000}
+  fs:
+    workspace-root: ${CODEKIT_WORKSPACE_ROOT:}
+
+ai:
+  provider: ${CODEKIT_AI_PROVIDER:mock}

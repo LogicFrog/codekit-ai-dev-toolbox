@@ -31,3 +31,22 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### System ###
+.DS_Store
+Thumbs.db
+
+### Logs ###
+*.log
+logs/
+
+### Environment ###
+.env
+.env.*
+src/main/resources/application-local.yml
+
+### Frontend ###
+node_modules/
+dist/
+coverage/
+.vite/

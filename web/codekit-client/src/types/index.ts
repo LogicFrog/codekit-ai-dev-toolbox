@@ -97,3 +97,25 @@ export interface ApiResponse<T = any> {
   message: string
   data: T
 }
+
+// ==================== AI 模块类型 ====================
+
+export interface AIChatRequest {
+  question: string
+  code?: string
+  languageType?: string
+  sessionId?: string
+}
+
+export interface AIChatResponse {
+  answer: string
+  suggestions?: string[]
+  codeBlocks?: CodeBlock[]
+  error?: string
+}
+
+export interface CodeBlock {
+  language: string
+  code: string
+  description?: string
+}
