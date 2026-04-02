@@ -193,22 +193,15 @@ defineExpose({
 }
 
 .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-4xl);
-  color: var(--color-text-muted);
+  min-height: 220px;
 }
 
 .empty-icon {
   font-size: 48px;
-  margin-bottom: var(--spacing-md);
 }
 
 .empty-text {
   font-size: var(--text-sm);
-  margin: 0;
 }
 
 .file-list {

@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import type {
+  CodeCategory,
   CodeSnippet,
   CodeDependency,
   VersionInfo,
@@ -16,11 +17,17 @@ export const getScanStatus = (scanDir: string): Promise<ScanStatusDTO> => {
   return request.get<ScanStatusDTO>(`/code/scan/status?scanDir=${encodeURIComponent(scanDir)}`)
 }
 
-export const saveCodeSnippetByPath = (filePath: string, languageType?: string, tag?: string): Promise<CodeSnippet> => {
+export const saveCodeSnippetByPath = (
+  filePath: string,
+  languageType?: string,
+  tag?: string,
+  categoryId?: number
+): Promise<CodeSnippet> => {
   const params = new URLSearchParams()
   params.append('filePath', filePath)
   if (languageType) params.append('languageType', languageType)
   if (tag) params.append('tag', tag)
+  if (typeof categoryId === 'number') params.append('categoryId', String(categoryId))
   return request.post<CodeSnippet>(`/code/save-by-path?${params.toString()}`)
 }
 
@@ -44,8 +51,43 @@ export const listCodeByLanguage = (type: string): Promise<CodeSnippet[]> => {
   return request.get<CodeSnippet[]>(`/code/language?type=${encodeURIComponent(type)}`)
 }
 
-export const listCodeByPage = (page: number = 0, size: number = 10): Promise<PageResult<CodeSnippet>> => {
-  return request.get<PageResult<CodeSnippet>>(`/code/page?page=${page}&size=${size}`)
+export const listCategories = (): Promise<CodeCategory[]> => {
+  return request.get<CodeCategory[]>('/code/categories')
+}
+
+export const createCategory = (categoryName: string): Promise<CodeCategory> => {
+  return request.post<CodeCategory>(`/code/categories?categoryName=${encodeURIComponent(categoryName)}`)
+}
+
+export const renameCategory = (categoryId: number, categoryName: string): Promise<CodeCategory> => {
+  return request.put<CodeCategory>(`/code/categories/${categoryId}?categoryName=${encodeURIComponent(categoryName)}`)
+}
+
+export const deleteCategory = (categoryId: number): Promise<boolean> => {
+  return request.delete<boolean>(`/code/categories/${categoryId}`)
+}
+
+export const listCodeByCategory = (categoryId: number): Promise<CodeSnippet[]> => {
+  return request.get<CodeSnippet[]>(`/code/category/${categoryId}`)
+}
+
+export const assignSnippetCategory = (id: number, categoryId: number): Promise<CodeSnippet> => {
+  return request.put<CodeSnippet>(`/code/${id}/category?categoryId=${categoryId}`)
+}
+
+export const listCodeByPage = (
+  page: number = 0,
+  size: number = 10,
+  categoryId?: number
+): Promise<PageResult<CodeSnippet>> => {
+  const query = new URLSearchParams({
+    page: String(page),
+    size: String(size)
+  })
+  if (typeof categoryId === 'number') {
+    query.append('categoryId', String(categoryId))
+  }
+  return request.get<PageResult<CodeSnippet>>(`/code/page?${query.toString()}`)
 }
 
 export const listCodeDependencies = (id: number): Promise<CodeDependency[]> => {

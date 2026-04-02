@@ -21,17 +21,17 @@ public interface SearchService {
     /**
      * 检索历史记录
      */
-    void saveSearchHistory(String keyword, String userId);
+    void saveSearchHistory(String keyword);
 
     /**
      * 获取搜索历史
      */
-    List<SearchHistory> getSearchHistory(String userId);
+    List<SearchHistory> getSearchHistory();
 
     /**
      * 清空搜索历史
      */
-    void clearSearchHistory(String userId);
+    void clearSearchHistory();
 
     /**
      * 获取热门搜索关键词

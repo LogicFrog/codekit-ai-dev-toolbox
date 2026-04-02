@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.monitor.FileAlterationListenerAdaptor;
 import org.itfjnu.codekit.code.filesystem.LocalFileScanService;
-import org.itfjnu.codekit.code.service.CodeManagerService;
+import org.itfjnu.codekit.code.service.CodeSnippetService;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -18,7 +18,7 @@ import java.io.File;
 public class ProjectFileListener extends FileAlterationListenerAdaptor {
 
     private final LocalFileScanService localFileScanService;
-    private final CodeManagerService codeManagerService;
+    private final CodeSnippetService codeSnippetService;
 
     // 1. 处理文件创建
     @Override
@@ -50,7 +50,7 @@ public class ProjectFileListener extends FileAlterationListenerAdaptor {
         log.info("[FileWatcher] 检测到文件删除: {}", file.getName());
         try {
             // 联动删除数据库记录
-            codeManagerService.deleteByFilePath(file.getAbsolutePath());
+            codeSnippetService.deleteByFilePath(file.getAbsolutePath());
         } catch (Exception e) {
             log.error("自动删除记录失败: {}", file.getName(), e);
         }

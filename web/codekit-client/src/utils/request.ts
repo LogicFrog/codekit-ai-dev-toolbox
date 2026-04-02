@@ -28,6 +28,7 @@ instance.interceptors.response.use(
   (error) => {
     const message = error.response?.data?.message || error.message || '请求失败'
     console.error('API Error:', message)
+    error.message = message
     return Promise.reject(error)
   }
 )

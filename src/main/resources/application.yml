@@ -39,3 +39,8 @@ codekit:
 
 ai:
   provider: ${CODEKIT_AI_PROVIDER:mock}
+  api-key: ${CODEKIT_AI_API_KEY:}
+  model: ${CODEKIT_AI_MODEL:}
+  base-url: ${CODEKIT_AI_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}
+  timeout: ${CODEKIT_AI_TIMEOUT:30000}
+  max-tokens: ${CODEKIT_AI_MAX_TOKENS:2048}

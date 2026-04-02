@@ -26,10 +26,6 @@ public class SearchHistory {
     @Column(name = "search_type")
     private Integer searchType;
 
-    // 用户ID (可以为空，表示匿名用户)
-    @Column(name = "user_id", length = 100)
-    private String userId;
-
     // 检索时间
     @Column(name = "search_time")
     private LocalDateTime searchTime;

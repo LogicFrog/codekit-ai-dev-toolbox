@@ -2,12 +2,14 @@ package org.itfjnu.codekit.code.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.itfjnu.codekit.code.model.CodeCategory;
 import org.itfjnu.codekit.code.model.CodeDependency;
 import org.itfjnu.codekit.code.model.CodeSnippet;
 import org.itfjnu.codekit.code.repository.CodeDependencyRepository;
 import org.itfjnu.codekit.code.repository.CodeSnippetRepository;
 import org.itfjnu.codekit.code.repository.VersionInfoRepository;
-import org.itfjnu.codekit.code.service.CodeManagerService;
+import org.itfjnu.codekit.code.service.CodeCategoryService;
+import org.itfjnu.codekit.code.service.CodeSnippetService;
 import org.itfjnu.codekit.common.dto.ErrorCode;
 import org.itfjnu.codekit.common.exception.BusinessException;
 import org.springframework.data.domain.Page;
@@ -15,7 +17,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,70 +24,37 @@ import java.util.Optional;
 @RequiredArgsConstructor
 @Transactional(rollbackFor = Exception.class)
 @Slf4j
-public class CodeManagerServiceImpl implements CodeManagerService {
+public class CodeSnippetServiceImpl implements CodeSnippetService {
 
     private final CodeSnippetRepository codeSnippetRepository;
     private final CodeDependencyRepository codeDependencyRepository;
     private final VersionInfoRepository versionInfoRepository;
+    private final CodeCategoryService codeCategoryService;
 
     @Override
     public CodeSnippet saveOrUpdateCodeSnippet(CodeSnippet snippet) {
         log.debug("保存或更新代码片段：filePath={}, id={}", snippet.getFilePath(), snippet.getId());
-        
-        // 1. 如果 id 存在，优先按 id 更新
+
         if (snippet.getId() != null) {
-            Optional<CodeSnippet> existingOpt = codeSnippetRepository.findById(snippet.getId());
-            if (existingOpt.isPresent()) {
-                CodeSnippet existing = existingOpt.get();
-                existing.setCodeContent(snippet.getCodeContent());
-                existing.setFileMd5(snippet.getFileMd5());
-                existing.setFilePath(snippet.getFilePath());
-                existing.setFileName(snippet.getFileName());
-                existing.setLanguageType(snippet.getLanguageType());
-                if (snippet.getPackageName() != null) {
-                    existing.setPackageName(snippet.getPackageName());
-                }
-                if (snippet.getClassName() != null) {
-                    existing.setClassName(snippet.getClassName());
-                }
-                if (snippet.getTags() != null && !snippet.getTags().isEmpty()) {
-                    existing.setTags(snippet.getTags());
-                }
-                CodeSnippet saved = codeSnippetRepository.save(existing);
+            Optional<CodeSnippet> existingSnippet = codeSnippetRepository.findById(snippet.getId());
+            if (existingSnippet.isPresent()) {
+                CodeSnippet saved = codeSnippetRepository.save(applySnippetChanges(existingSnippet.get(), snippet));
                 log.info("按 ID 更新代码片段成功：id={}, filePath={}", saved.getId(), saved.getFilePath());
                 return saved;
-            } else {
-                log.warn("按 ID 未找到代码片段：id={}", snippet.getId());
-                throw new BusinessException(ErrorCode.CODE_NOT_FOUND, "代码片段不存在，ID: " + snippet.getId());
             }
+            throw new BusinessException(ErrorCode.CODE_NOT_FOUND, "代码片段不存在，ID: " + snippet.getId());
         }
 
-        // 2. 如果 id 不存在但 filePath 存在，按 filePath 更新
         if (snippet.getFilePath() != null) {
             Optional<CodeSnippet> existingByPath = codeSnippetRepository.findByFilePath(snippet.getFilePath());
             if (existingByPath.isPresent()) {
-                CodeSnippet existing = existingByPath.get();
-                existing.setCodeContent(snippet.getCodeContent());
-                existing.setFileMd5(snippet.getFileMd5());
-                existing.setFilePath(snippet.getFilePath());
-                existing.setFileName(snippet.getFileName());
-                existing.setLanguageType(snippet.getLanguageType());
-                if (snippet.getPackageName() != null) {
-                    existing.setPackageName(snippet.getPackageName());
-                }
-                if (snippet.getClassName() != null) {
-                    existing.setClassName(snippet.getClassName());
-                }
-                if (snippet.getTags() != null && !snippet.getTags().isEmpty()) {
-                    existing.setTags(snippet.getTags());
-                }
-                CodeSnippet saved = codeSnippetRepository.save(existing);
+                CodeSnippet saved = codeSnippetRepository.save(applySnippetChanges(existingByPath.get(), snippet));
                 log.info("按路径更新代码片段成功：id={}, filePath={}", saved.getId(), saved.getFilePath());
                 return saved;
             }
         }
 
-        // 3. 都不存在，才新建
+        snippet.setCategory(resolveCategory(snippet.getCategory(), true));
         CodeSnippet saved = codeSnippetRepository.save(snippet);
         log.info("新建代码片段成功：id={}, filePath={}", saved.getId(), saved.getFilePath());
         return saved;
@@ -94,7 +62,8 @@ public class CodeManagerServiceImpl implements CodeManagerService {
 
     @Override
     public Boolean deleteCodeSnippetById(Long id) {
-        codeSnippetRepository.findById(id).orElseThrow(() -> new BusinessException(ErrorCode.CODE_NOT_FOUND, "代码片段不存在"));
+        codeSnippetRepository.findById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CODE_NOT_FOUND, "代码片段不存在"));
         codeDependencyRepository.deleteByCodeSnippetId(id);
         versionInfoRepository.deleteBySnippetId(id);
         codeSnippetRepository.deleteById(id);
@@ -112,6 +81,12 @@ public class CodeManagerServiceImpl implements CodeManagerService {
     }
 
     @Override
+    public Page<CodeSnippet> listCodeSnippetByCategory(Long categoryId, Pageable pageable) {
+        requireCategory(categoryId);
+        return codeSnippetRepository.findByCategory_Id(categoryId, pageable);
+    }
+
+    @Override
     public List<CodeSnippet> listCodeSnippetByLanguage(String languageType) {
         return codeSnippetRepository.findByLanguageType(languageType);
     }
@@ -119,6 +94,20 @@ public class CodeManagerServiceImpl implements CodeManagerService {
     @Override
     public List<CodeSnippet> listCodeSnippetByTag(String tag) {
         return codeSnippetRepository.findByTagName(tag);
+    }
+
+    @Override
+    public List<CodeSnippet> listCodeSnippetByCategory(Long categoryId) {
+        requireCategory(categoryId);
+        return codeSnippetRepository.findByCategory_Id(categoryId);
+    }
+
+    @Override
+    public CodeSnippet assignCategory(Long snippetId, Long categoryId) {
+        CodeSnippet snippet = codeSnippetRepository.findById(snippetId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CODE_NOT_FOUND, "代码片段不存在"));
+        snippet.setCategory(requireCategory(categoryId));
+        return codeSnippetRepository.save(snippet);
     }
 
     @Override
@@ -139,13 +128,13 @@ public class CodeManagerServiceImpl implements CodeManagerService {
     @Override
     public Boolean deleteByFilePath(String filePath) {
         CodeSnippet snippet = codeSnippetRepository.findByFilePath(filePath).orElse(null);
-        if (snippet != null) {
-            codeDependencyRepository.deleteByCodeSnippetId(snippet.getId());
-            versionInfoRepository.deleteBySnippetId(snippet.getId());
-            codeSnippetRepository.deleteByFilePath(filePath);
-            return true;
+        if (snippet == null) {
+            return false;
         }
-        return false;
+        codeDependencyRepository.deleteByCodeSnippetId(snippet.getId());
+        versionInfoRepository.deleteBySnippetId(snippet.getId());
+        codeSnippetRepository.deleteByFilePath(filePath);
+        return true;
     }
 
     @Override
@@ -162,10 +151,8 @@ public class CodeManagerServiceImpl implements CodeManagerService {
 
     @Override
     public Boolean saveDependencies(Long snippetId, List<String> importList) {
-        // 1. 先根据 snippetId 删除旧的依赖（防止更新代码时产生冗余数据）
         codeDependencyRepository.deleteByCodeSnippetId(snippetId);
 
-        // 2. 转换并批量保存新的依赖
         List<CodeDependency> deps = importList.stream().map(imp -> {
             CodeDependency dep = new CodeDependency();
             dep.setCodeSnippetId(snippetId);
@@ -176,5 +163,43 @@ public class CodeManagerServiceImpl implements CodeManagerService {
 
         codeDependencyRepository.saveAll(deps);
         return true;
+    }
+
+    private CodeSnippet applySnippetChanges(CodeSnippet existing, CodeSnippet incoming) {
+        existing.setCodeContent(incoming.getCodeContent());
+        existing.setFileMd5(incoming.getFileMd5());
+        existing.setFilePath(incoming.getFilePath());
+        existing.setFileName(incoming.getFileName());
+        existing.setLanguageType(incoming.getLanguageType());
+        existing.setCategory(resolveCategory(incoming.getCategory(), existing.getCategory() == null));
+        if (incoming.getPackageName() != null) {
+            existing.setPackageName(incoming.getPackageName());
+        }
+        if (incoming.getClassName() != null) {
+            existing.setClassName(incoming.getClassName());
+        }
+        if (incoming.getTags() != null && !incoming.getTags().isEmpty()) {
+            existing.setTags(incoming.getTags());
+        }
+        return existing;
+    }
+
+    private CodeCategory resolveCategory(CodeCategory incomingCategory, boolean applyDefaultWhenMissing) {
+        if (incomingCategory != null) {
+            Long categoryId = incomingCategory.getId();
+            if (categoryId == null) {
+                throw new BusinessException(ErrorCode.PARAM_INVALID, "分类ID不能为空");
+            }
+            return requireCategory(categoryId);
+        }
+        return applyDefaultWhenMissing ? codeCategoryService.getDefaultCategory() : null;
+    }
+
+    private CodeCategory requireCategory(Long categoryId) {
+        CodeCategory category = codeCategoryService.getCategoryById(categoryId);
+        if (category == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "分类不存在，ID: " + categoryId);
+        }
+        return category;
     }
 }

@@ -198,14 +198,7 @@ const isActive = (path: string) => {
 }
 
 .preview-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
-  background-color: var(--color-warning-muted);
-  color: var(--color-warning);
-  border-radius: var(--radius-sm);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  flex-shrink: 0;
 }
 
 .sidebar-footer {
@@ -220,15 +213,16 @@ const isActive = (path: string) => {
 }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background-color: var(--color-success);
+  box-shadow: 0 0 0 2px var(--color-bg-elevated);
 }
 
 .status-text {
   font-size: var(--text-xs);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 
 .main {

@@ -78,6 +78,8 @@ public enum ErrorCode {
     AI_CONTEXT_TOO_LONG(5008, "AI 上下文过长"),
     AI_SERVICE_UNAVAILABLE(5009, "AI 服务暂时不可用"),
     AI_STREAM_INTERRUPTED(5010, "AI 流式响应中断"),
+    AI_EMPTY_RESPONSE(5011, "AI 未返回有效回答"),
+    AI_RESPONSE_READ_FAILED(5012, "AI 响应读取失败"),
     FEATURE_NOT_IMPLEMENTED(5998, "功能尚未实现"),
     AI_FAILED(5999, "AI 处理失败"),
 
@@ -93,6 +95,7 @@ public enum ErrorCode {
     GIT_REPOSITORY_NOT_FOUND(6008, "Git 仓库不存在"),
     GIT_BRANCH_NOT_FOUND(6009, "Git 分支不存在"),
     GIT_COMMIT_NOT_FOUND(6010, "Git 提交记录不存在"),
+    VERSION_LIST_FAILED(6011, "版本查询失败"),
 
     // ========== 文件系统错误 (7xxx) ==========
     FILE_NOT_FOUND(7000, "文件不存在"),

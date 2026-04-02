@@ -26,14 +26,16 @@ public class FileSystemController {
     @GetMapping("/list")
     public ApiResponse<List<FsItem>> listFiles(@RequestParam(required = false) String path) {
         String workspaceRoot = codeKitProperties.getFs().getWorkspaceRoot();
-        
-        if (workspaceRoot == null || workspaceRoot.isEmpty()) {
-            throw new BusinessException(ErrorCode.CONFIG_ERROR, "工作区根目录未配置，请设置 codekit.fs.workspace-root");
-        }
 
         String searchPath;
         if (path == null || path.isEmpty()) {
-            searchPath = workspaceRoot;
+            if (workspaceRoot != null && !workspaceRoot.isEmpty()) {
+                searchPath = workspaceRoot;
+            } else {
+                searchPath = File.listRoots().length > 0
+                        ? File.listRoots()[0].getAbsolutePath()
+                        : new File("/").getAbsolutePath();
+            }
         } else {
             searchPath = path;
         }
@@ -49,28 +51,20 @@ public class FileSystemController {
         }
 
         Path normalizedSearchPath;
-        Path normalizedWorkspaceRoot;
         try {
             normalizedSearchPath = directory.getCanonicalFile().toPath().normalize();
-            normalizedWorkspaceRoot = new File(workspaceRoot).getCanonicalFile().toPath().normalize();
         } catch (IOException e) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "路径解析失败: " + e.getMessage());
-        }
-
-        if (!normalizedSearchPath.startsWith(normalizedWorkspaceRoot)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "非法路径：只能访问工作区目录内的文件");
+            throw new BusinessException(ErrorCode.FILE_PATH_INVALID, "路径解析失败: " + e.getMessage(), e);
         }
 
         File[] files = directory.listFiles();
         List<FsItem> items = new ArrayList<>();
 
-        if (!normalizedSearchPath.equals(normalizedWorkspaceRoot) && directory.getParent() != null) {
+        if (directory.getParent() != null) {
             String parentPath = directory.getParent();
             try {
-                Path normalizedParent = new File(parentPath).getCanonicalFile().toPath().normalize();
-                if (normalizedParent.startsWith(normalizedWorkspaceRoot)) {
-                    items.add(new FsItem(".. (返回上一级)", parentPath, true));
-                }
+                new File(parentPath).getCanonicalFile().toPath().normalize();
+                items.add(new FsItem(".. (返回上一级)", parentPath, true));
             } catch (IOException ignored) {
             }
         }

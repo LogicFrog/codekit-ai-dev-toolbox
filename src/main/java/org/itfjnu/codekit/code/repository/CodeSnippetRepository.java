@@ -1,6 +1,8 @@
 package org.itfjnu.codekit.code.repository;
 
 import org.itfjnu.codekit.code.model.CodeSnippet;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -24,6 +26,10 @@ public interface CodeSnippetRepository extends JpaRepository<CodeSnippet, Long> 
     void deleteByFilePath(String filePath);
 
     List<CodeSnippet> findByLanguageType(String languageType);
+
+    List<CodeSnippet> findByCategory_Id(Long categoryId);
+
+    Page<CodeSnippet> findByCategory_Id(Long categoryId, Pageable pageable);
 
     @org.springframework.data.jpa.repository.Query("SELECT s FROM CodeSnippet s JOIN s.tags t WHERE t = :tag")
     List<CodeSnippet> findByTagName(String tag);

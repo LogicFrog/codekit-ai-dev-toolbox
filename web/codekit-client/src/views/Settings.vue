@@ -199,16 +199,6 @@ const settings = reactive({
   color: var(--color-text-tertiary);
 }
 
-.preview-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
-  background: var(--color-warning-muted);
-  color: var(--color-warning);
-  border-radius: var(--radius-sm);
-  text-transform: uppercase;
-}
-
 .about-info {
   display: flex;
   flex-direction: column;
@@ -235,11 +225,14 @@ const settings = reactive({
 
 .about-link {
   font-size: var(--text-sm);
-  color: var(--color-accent-primary);
+  color: var(--color-text-secondary);
   text-decoration: none;
+  border-bottom: 1px solid var(--color-border-strong);
+  padding-bottom: 1px;
 }
 
 .about-link:hover {
-  text-decoration: underline;
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-text-primary);
 }
 </style>

@@ -1,5 +1,21 @@
 import type { VersionInfo, SearchRequest, CreateVersionRequest } from '@/types'
 
+export const extractErrorMessage = (error: unknown, fallback: string = '请求失败'): string => {
+  if (error && typeof error === 'object') {
+    const responseMessage = (error as any).response?.data?.message
+    if (typeof responseMessage === 'string' && responseMessage.trim()) {
+      return responseMessage
+    }
+
+    const message = (error as any).message
+    if (typeof message === 'string' && message.trim()) {
+      return message
+    }
+  }
+
+  return fallback
+}
+
 export const formatDate = (date: string | Date, format: string = 'YYYY-MM-DD HH:mm:ss'): string => {
   if (!date) return '-'
   
@@ -91,22 +107,22 @@ export const truncate = (text: string, maxLength: number = 100, suffix: string =
 
 export const getLanguageColor = (language: string): string => {
   const colors: Record<string, string> = {
-    Java: '#E76F00',
-    JavaScript: '#F7DF1E',
-    TypeScript: '#3178C6',
-    Python: '#3776AB',
-    Go: '#00ADD8',
-    Rust: '#DEA584',
-    C: '#555555',
-    'C++': '#F34B7D',
-    'C#': '#239120',
-    PHP: '#777BB4',
-    Ruby: '#CC342D',
-    Swift: '#F05138',
-    Kotlin: '#A97BFF',
-    Scala: '#DC322F',
+    Java: '#2f2f2f',
+    JavaScript: '#5a5a5a',
+    TypeScript: '#3a3a3a',
+    Python: '#454545',
+    Go: '#686868',
+    Rust: '#1f1f1f',
+    C: '#4a4a4a',
+    'C++': '#353535',
+    'C#': '#4f4f4f',
+    PHP: '#6a6a6a',
+    Ruby: '#242424',
+    Swift: '#3f3f3f',
+    Kotlin: '#383838',
+    Scala: '#4b4b4b',
   }
-  return colors[language] || '#6B7280'
+  return colors[language] || '#4a4a4a'
 }
 
 export const getLanguageTagType = (language: string): 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' => {

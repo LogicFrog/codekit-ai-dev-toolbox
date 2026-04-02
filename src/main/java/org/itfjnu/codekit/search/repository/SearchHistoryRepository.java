@@ -8,8 +8,8 @@ import java.util.List;
 
 @Repository
 public interface SearchHistoryRepository extends JpaRepository<SearchHistory, Long> {
-    
-    List<SearchHistory> findTop10ByUserIdOrderBySearchTimeDesc(String userId);
-    
-    void deleteByUserId(String userId);
+
+    List<SearchHistory> findTop10ByOrderBySearchTimeDesc();
+
+    void deleteAllBy();
 }

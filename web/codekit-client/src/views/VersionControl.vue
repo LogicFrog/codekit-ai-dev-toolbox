@@ -184,7 +184,7 @@ import { ElMessage } from 'element-plus'
 import { RefreshRight, Switch, Plus } from '@element-plus/icons-vue'
 import { listVersions, createVersion } from '@/api/version'
 import type { VersionInfo, CodeSnippet } from '@/types'
-import { formatRelativeTime } from '@/utils/helpers'
+import { formatRelativeTime, extractErrorMessage } from '@/utils/helpers'
 import DiffEditor from '@/components/DiffEditor.vue'
 
 const loading = ref(false)
@@ -226,7 +226,7 @@ const fetchSnippets = async () => {
     snippetsList.value = allSnippets
   } catch (error) {
     console.error('获取代码片段列表失败:', error)
-    ElMessage.error('加载代码片段失败')
+    ElMessage.error(extractErrorMessage(error, '加载代码片段失败'))
   } finally {
     loading.value = false
   }
@@ -250,7 +250,7 @@ const fetchVersions = async (snippetId: number) => {
     }
   } catch (error) {
     console.error('获取版本列表失败:', error)
-    ElMessage.error('加载版本列表失败')
+    ElMessage.error(extractErrorMessage(error, '加载版本列表失败'))
   } finally {
     loading.value = false
   }
@@ -304,7 +304,7 @@ const handleCreateVersion = async () => {
     fetchVersions(selectedSnippetId.value)
   } catch (error) {
     console.error('创建版本失败:', error)
-    ElMessage.error('创建版本失败')
+    ElMessage.error(extractErrorMessage(error, '创建版本失败'))
   } finally {
     creating.value = false
   }
@@ -320,7 +320,11 @@ onMounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-base);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
 }
 
 .vc-header {
@@ -328,7 +332,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: var(--spacing-lg) var(--spacing-xl);
-  background: var(--color-bg-elevated);
+  background: color-mix(in srgb, var(--color-bg-elevated) 86%, var(--color-bg-sunken) 14%);
   border-bottom: 1px solid var(--color-border-muted);
 }
 
@@ -422,7 +426,8 @@ onMounted(() => {
   padding: var(--spacing-sm) var(--spacing-md);
   background: var(--color-bg-elevated);
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-muted);
+  border: 1px solid var(--color-border-default);
+  box-shadow: var(--shadow-xs);
 }
 
 .version-badge.original {
@@ -483,24 +488,17 @@ onMounted(() => {
 
 .empty-state {
   height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-4xl);
+  min-height: 320px;
 }
 
 .empty-icon {
   font-size: 64px;
-  color: var(--color-text-hint);
-  margin-bottom: var(--spacing-xl);
 }
 
 .empty-title {
   font-size: var(--text-xl);
   font-weight: 600;
   color: var(--color-text-primary);
-  margin: 0 0 var(--spacing-sm);
 }
 
 .empty-hint {
@@ -520,9 +518,10 @@ onMounted(() => {
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-md) var(--spacing-lg);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-muted);
-  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-bg-elevated) 76%, var(--color-bg-sunken) 24%);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
 }
 
 .step-num {
@@ -536,6 +535,10 @@ onMounted(() => {
   font-size: var(--text-xs);
   font-weight: 600;
   border-radius: 50%;
+}
+
+[data-theme="dark"] .step-num {
+  color: #0a0a0a;
 }
 
 .step-text {

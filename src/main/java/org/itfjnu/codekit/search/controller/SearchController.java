@@ -57,8 +57,8 @@ public class SearchController {
      */
     @Operation(summary = "搜索历史", description = "获取搜索历史记录")
     @GetMapping("/history")
-    public ApiResponse<List<SearchHistory>> getSearchHistory(@RequestParam(defaultValue = "anonymous") String userId) {
-        List<SearchHistory> history = searchService.getSearchHistory(userId);
+    public ApiResponse<List<SearchHistory>> getSearchHistory() {
+        List<SearchHistory> history = searchService.getSearchHistory();
         return ApiResponse.success(history);
     }
 
@@ -69,8 +69,8 @@ public class SearchController {
      */
     @Operation(summary = "清空搜索历史", description = "清空指定用户的搜索历史记录")
     @DeleteMapping("/history")
-    public ApiResponse<Void> clearSearchHistory(@RequestParam(defaultValue = "anonymous") String userId) {
-        searchService.clearSearchHistory(userId);
+    public ApiResponse<Void> clearSearchHistory() {
+        searchService.clearSearchHistory();
         return ApiResponse.success();
     }
 

@@ -268,7 +268,7 @@ import {
 import { keywordSearch, getHotKeywords, getSearchHistory } from '@/api/search'
 import { getAllCodeSnippets, getCodeSnippet } from '@/api/code'
 import type { SearchResponse, SearchHistory, CodeSnippet } from '@/types'
-import { formatRelativeTime, getLanguageColor, getCodePreview, copyToClipboard } from '@/utils/helpers'
+import { formatRelativeTime, getLanguageColor, getCodePreview, copyToClipboard, extractErrorMessage } from '@/utils/helpers'
 
 const route = useRoute()
 
@@ -330,7 +330,7 @@ const handleSearch = async () => {
     total.value = result.totalElements || 0
   } catch (error) {
     console.error('搜索失败:', error)
-    ElMessage.error('搜索失败')
+    ElMessage.error(extractErrorMessage(error, '搜索失败'))
     searchResults.value = []
     total.value = 0
   } finally {
@@ -441,8 +441,9 @@ onMounted(() => {
 
 .search-hero {
   background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-muted);
+  border: 1px solid var(--color-border-default);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
   padding: var(--spacing-3xl);
   margin-bottom: var(--spacing-lg);
 }
@@ -540,8 +541,9 @@ onMounted(() => {
 .results-section {
   flex: 1;
   background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-muted);
+  border: 1px solid var(--color-border-default);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -687,20 +689,29 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--spacing-sm);
+  min-height: 220px;
   padding: var(--spacing-4xl);
+  border: 1px dashed var(--color-border-default);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-bg-elevated) 90%, var(--color-bg-sunken) 10%) 0%,
+    color-mix(in srgb, var(--color-bg-elevated) 78%, var(--color-bg-sunken) 22%) 100%
+  );
 }
 
 .empty-results .empty-icon {
   font-size: 64px;
-  color: var(--color-text-hint);
-  margin-bottom: var(--spacing-xl);
+  color: var(--color-text-muted);
+  opacity: 0.82;
 }
 
 .empty-results h3 {
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--color-text-primary);
-  margin: 0 0 var(--spacing-sm);
+  margin: 0;
 }
 
 .empty-results p {

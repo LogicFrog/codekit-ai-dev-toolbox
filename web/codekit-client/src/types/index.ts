@@ -1,3 +1,11 @@
+export interface CodeCategory {
+  id: number
+  categoryName: string
+  sortOrder?: number
+  createTime?: string
+  updateTime?: string
+}
+
 export interface CodeSnippet {
   id: number
   filePath: string
@@ -8,6 +16,7 @@ export interface CodeSnippet {
   packageName?: string
   fileMd5?: string
   tags?: string[]
+  category?: CodeCategory | null
   createTime: string
   updateTime: string
   dependencies?: CodeDependency[]
@@ -82,7 +91,6 @@ export interface SearchHistory {
   id: number
   keyword: string
   searchType: number
-  userId?: string
   searchTime: string
 }
 
@@ -111,7 +119,6 @@ export interface AIChatResponse {
   answer: string
   suggestions?: string[]
   codeBlocks?: CodeBlock[]
-  error?: string
 }
 
 export interface CodeBlock {

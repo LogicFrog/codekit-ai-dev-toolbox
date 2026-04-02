@@ -72,14 +72,14 @@
       <div class="response-section" v-if="hasResponse">
         <div class="response-header">
           <span class="response-title">AI 回复</span>
-          <el-tag v-if="response?.error" type="danger" size="small">错误</el-tag>
+          <el-tag v-if="errorMessage" type="danger" size="small">错误</el-tag>
         </div>
 
         <div class="response-content" v-loading="loading">
           <!-- 错误信息 -->
-          <div class="error-block" v-if="response?.error">
+          <div class="error-block" v-if="errorMessage">
             <el-icon><WarningFilled /></el-icon>
-            <span>{{ response.error }}</span>
+            <span>{{ errorMessage }}</span>
           </div>
 
           <!-- 回答内容 -->
@@ -142,6 +142,7 @@ import {
 } from '@element-plus/icons-vue'
 import { aiChat, aiExplain } from '@/api/ai'
 import type { AIChatRequest, AIChatResponse } from '@/types'
+import { extractErrorMessage } from '@/utils/helpers'
 
 // 表单数据
 const form = reactive<AIChatRequest>({
@@ -159,6 +160,7 @@ const loading = ref(false)
 // 响应数据
 const response = ref<AIChatResponse | null>(null)
 const hasResponse = ref(false)
+const errorMessage = ref('')
 
 // 会话ID（简单生成）
 const sessionId = ref(`session-${Date.now()}`)
@@ -170,7 +172,7 @@ const handleSubmit = async () => {
     ElMessage.warning('请输入问题')
     return
   }
-  if (mode.value === 'explain' && !form.code.trim()) {
+  if (mode.value === 'explain' && !form.code?.trim()) {
     ElMessage.warning('请输入需要解释的代码')
     return
   }
@@ -178,6 +180,7 @@ const handleSubmit = async () => {
   loading.value = true
   hasResponse.value = true
   response.value = null
+  errorMessage.value = ''
 
   try {
     const requestData: AIChatRequest = {
@@ -194,10 +197,7 @@ const handleSubmit = async () => {
     }
   } catch (error: any) {
     console.error('AI 请求失败:', error)
-    response.value = {
-      answer: '',
-      error: error.message || '请求失败，请稍后重试'
-    }
+    errorMessage.value = extractErrorMessage(error, '请求失败，请稍后重试')
   } finally {
     loading.value = false
   }
@@ -209,6 +209,7 @@ const handleClear = () => {
   form.code = ''
   form.languageType = ''
   response.value = null
+  errorMessage.value = ''
   hasResponse.value = false
 }
 
@@ -255,8 +256,9 @@ const copyCode = async (code: string) => {
 
 .input-section {
   background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-muted);
+  border: 1px solid var(--color-border-default);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
   padding: var(--spacing-xl);
   margin-bottom: var(--spacing-xl);
 }
@@ -294,15 +296,16 @@ const copyCode = async (code: string) => {
 
 .action-buttons {
   display: flex;
-  gap: var(--spacing-md);
+  gap: var(--spacing-sm);
   justify-content: flex-end;
   margin-top: var(--spacing-lg);
 }
 
 .response-section {
   background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-muted);
+  border: 1px solid var(--color-border-default);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
   overflow: hidden;
 }
 
@@ -427,22 +430,14 @@ const copyCode = async (code: string) => {
 }
 
 .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-4xl);
-  color: var(--color-text-tertiary);
+  min-height: 240px;
 }
 
 .empty-state .empty-icon {
   font-size: 48px;
-  margin-bottom: var(--spacing-md);
-  opacity: 0.5;
 }
 
 .empty-state p {
-  margin: 0;
   font-size: var(--text-sm);
 }
 </style>

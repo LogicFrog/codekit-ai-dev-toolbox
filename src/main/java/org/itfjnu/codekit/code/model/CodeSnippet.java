@@ -1,10 +1,25 @@
 package org.itfjnu.codekit.code.model;
 
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import jakarta.persistence.*;
+
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * 代码片段实体：对应MySQL的code_snippet表
@@ -40,10 +55,14 @@ public class CodeSnippet {
     @Column(name = "class_name", length = 128)
     private String className;   // 类名，如 LocalFileScanService
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "category_id")
+    private CodeCategory category; // 所属分类
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "code_snippet_tags", joinColumns = @JoinColumn(name = "snippet_id"))
     @Column(name = "tag_name")
-    private java.util.Set<String> tags = new java.util.HashSet<>(); // 标签集合，优化检索性能
+    private Set<String> tags = new HashSet<>(); // 标签集合，优化检索性能
 
     @Column(name = "create_time", updatable = false)
     private LocalDateTime createTime; // 创建时间，不更新
