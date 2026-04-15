@@ -21,7 +21,7 @@ public interface SearchService {
     /**
      * 检索历史记录
      */
-    void saveSearchHistory(String keyword);
+    Boolean saveSearchHistory(String keyword);
 
     /**
      * 获取搜索历史
@@ -31,7 +31,7 @@ public interface SearchService {
     /**
      * 清空搜索历史
      */
-    void clearSearchHistory();
+    Boolean clearSearchHistory();
 
     /**
      * 获取热门搜索关键词

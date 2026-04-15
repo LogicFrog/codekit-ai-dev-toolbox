@@ -11,5 +11,5 @@ public interface SearchHistoryRepository extends JpaRepository<SearchHistory, Lo
 
     List<SearchHistory> findTop10ByOrderBySearchTimeDesc();
 
-    void deleteAllBy();
+    long deleteAllBy();
 }

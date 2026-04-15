@@ -1,6 +1,7 @@
 package org.itfjnu.codekit.ai.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,7 +10,9 @@ import org.itfjnu.codekit.ai.dto.AIChatRequest;
 import org.itfjnu.codekit.ai.dto.AIChatResponse;
 import org.itfjnu.codekit.ai.dto.DoubaoRequest;
 import org.itfjnu.codekit.ai.dto.DoubaoResponse;
+import org.itfjnu.codekit.ai.model.ChatMessage;
 import org.itfjnu.codekit.ai.service.AIService;
+import org.itfjnu.codekit.ai.service.SessionHistoryService;
 import org.itfjnu.codekit.common.exception.BusinessException;
 import org.itfjnu.codekit.common.exception.ServiceException;
 import org.springframework.http.MediaType;
@@ -17,12 +20,18 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.itfjnu.codekit.common.dto.ErrorCode.*;
 
@@ -39,11 +48,13 @@ public class RealAIServiceImpl implements AIService {
 
     private final AIProperties aiProperties;
     private final ObjectMapper objectMapper;
+    private final SessionHistoryService sessionHistoryService;
 
     // 定义关键词
     private static final List<String> SUGGESTION_KEYWORDS = List.of(
             "建议", "改进", "优化", "注意", "可以"
     );
+    private static final int CHAT_HISTORY_ROUNDS = 4;
 
     private RestClient restClient;
 
@@ -54,6 +65,7 @@ public class RealAIServiceImpl implements AIService {
         log.info("接入点 ID: {}", aiProperties.getModel());
         log.info("超时时间: {} ms", aiProperties.getTimeout());
         log.info("最大 Tokens: {}", aiProperties.getMaxTokens());
+        log.info("温度参数: {}", aiProperties.getTemperature());
         log.info("配置状态: {}", aiProperties.isConfigured() ? "✅ 已配置" : "❌ 未配置");
 
         if (!aiProperties.isConfigured()) {
@@ -81,13 +93,68 @@ public class RealAIServiceImpl implements AIService {
             throw new ServiceException(CONFIG_ERROR, "豆包 AI 未配置。请在 application-local.yml 中设置 ai.api-key 和 ai.model");
         }
 
-        String prompt = buildChatPrompt(request);
+        String sessionId = resolveSessionId(request.getSessionId());
+        String currentQuestion = request.getQuestion() == null ? "" : request.getQuestion();
+        List<ChatMessage> history = sessionHistoryService.getRecentMessages(sessionId, CHAT_HISTORY_ROUNDS);
+        String prompt = buildChatPromptWithHistory(request, history);
         String answer = callDoubaoAPI(prompt);
+        sessionHistoryService.appendUserMessage(sessionId, currentQuestion);
+        sessionHistoryService.appendAssistantMessage(sessionId, answer);
 
         log.info("chat 请求处理成功");
         return AIChatResponse.builder()
                 .answer(answer)
+                .sessionId(sessionId)
                 .build();
+    }
+
+    @Override
+    public SseEmitter chatStream(AIChatRequest request) {
+        if (!aiProperties.isConfigured()) {
+            throw new ServiceException(CONFIG_ERROR, "豆包 AI 未配置。请在 application-local.yml 中设置 ai.api-key 和 ai.model");
+        }
+
+        String sessionId = resolveSessionId(request.getSessionId());
+        List<ChatMessage> history = sessionHistoryService.getRecentMessages(sessionId, CHAT_HISTORY_ROUNDS);
+        String prompt = buildChatPromptWithHistory(request, history);
+
+        SseEmitter emitter = new SseEmitter((long) aiProperties.getTimeout() + 30000L);
+        Thread.startVirtualThread(() -> {
+            String userQuestion = request.getQuestion() == null ? "" : request.getQuestion();
+            StringBuilder fullAnswer = new StringBuilder();
+            try {
+                log.info("开始流式 chat，请求 sessionId={}", sessionId);
+                callDoubaoAPIStream(prompt, chunk -> {
+                    fullAnswer.append(chunk);
+                    sendStreamEvent(emitter, "chunk", Map.of(
+                            "content", chunk,
+                            "sessionId", sessionId
+                    ));
+                });
+
+                sessionHistoryService.appendUserMessage(sessionId, userQuestion);
+                sessionHistoryService.appendAssistantMessage(sessionId, fullAnswer.toString());
+
+                sendStreamEvent(emitter, "done", Map.of(
+                        "sessionId", sessionId,
+                        "answer", fullAnswer.toString()
+                ));
+                log.info("流式 chat 完成，sessionId={}, answerLength={}", sessionId, fullAnswer.length());
+                emitter.complete();
+            } catch (Exception e) {
+                log.error("流式 chat 处理失败: {}", e.getMessage(), e);
+                try {
+                    sendStreamEvent(emitter, "error", Map.of(
+                            "message", e.getMessage(),
+                            "sessionId", sessionId
+                    ));
+                } catch (Exception ignored) {
+                    // ignore
+                }
+                emitter.completeWithError(e);
+            }
+        });
+        return emitter;
     }
 
     @Override
@@ -129,6 +196,7 @@ public class RealAIServiceImpl implements AIService {
                     prompt,
                     aiProperties.getMaxTokens()
             );
+            doubaoRequest.setTemperature(aiProperties.getTemperature());
 
             log.debug("发送请求到豆包 API: {}", objectMapper.writeValueAsString(doubaoRequest));
 
@@ -183,22 +251,109 @@ public class RealAIServiceImpl implements AIService {
         }
     }
 
+    private void callDoubaoAPIStream(String prompt, Consumer<String> chunkConsumer) {
+        try {
+            DoubaoRequest streamRequest = DoubaoRequest.ofUser(
+                    aiProperties.getModel(),
+                    prompt,
+                    aiProperties.getMaxTokens()
+            );
+            streamRequest.setStream(Boolean.TRUE);
+            streamRequest.setTemperature(aiProperties.getTemperature());
+
+            restClient.post()
+                    .uri("/chat/completions")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.TEXT_EVENT_STREAM)
+                    .body(streamRequest)
+                    .exchange((req, res) -> {
+                        log.info("豆包流式响应状态码: {}", res.getStatusCode());
+                        if (res.getStatusCode().isError()) {
+                            throw new BusinessException(AI_REQUEST_FAILED, "流式请求失败，状态码: " + res.getStatusCode());
+                        }
+                        try (InputStream body = res.getBody();
+                             BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8))) {
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                if (!line.startsWith("data:")) {
+                                    continue;
+                                }
+                                String data = line.substring(5).trim();
+                                if (data.isEmpty()) {
+                                    continue;
+                                }
+                                if ("[DONE]".equals(data)) {
+                                    break;
+                                }
+                                JsonNode root = objectMapper.readTree(data);
+                                JsonNode deltaContent = root.path("choices").path(0).path("delta").path("content");
+                                if (deltaContent.isTextual() && !deltaContent.asText().isEmpty()) {
+                                    chunkConsumer.accept(deltaContent.asText());
+                                    continue;
+                                }
+                                JsonNode messageContent = root.path("choices").path(0).path("message").path("content");
+                                if (messageContent.isTextual() && !messageContent.asText().isEmpty()) {
+                                    chunkConsumer.accept(messageContent.asText());
+                                }
+                            }
+                            return null;
+                        } catch (IOException e) {
+                            throw new BusinessException(AI_RESPONSE_READ_FAILED, "流式响应读取失败: " + e.getMessage(), e);
+                        }
+                    });
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(AI_REQUEST_FAILED, "流式调用失败: " + e.getMessage(), e);
+        }
+    }
+
+    private void sendStreamEvent(SseEmitter emitter, String eventName, Object data) {
+        try {
+            emitter.send(SseEmitter.event().name(eventName).data(data));
+        } catch (IOException e) {
+            throw new BusinessException(AI_STREAM_INTERRUPTED, "SSE 推送失败: " + e.getMessage(), e);
+        }
+    }
+
 
     /**
-     * 构建 chat 提示词
+     * 构建 chat 提示词（带多轮历史）
      */
-    private String buildChatPrompt(AIChatRequest request) {
+    private String buildChatPromptWithHistory(AIChatRequest request, List<ChatMessage> history) {
         StringBuilder prompt = new StringBuilder();
-        
-        if (request.getCode() != null && !request.getCode().isEmpty()) {
-            prompt.append("代码：\n```\n")
-                  .append(request.getCode())
-                  .append("\n```\n\n");
+
+        prompt.append("你是 CodeKit 的 AI 助手。请面向开发者，给出准确、可执行的回答。\n\n");
+
+        if (history != null && !history.isEmpty()) {
+            prompt.append("以下是最近对话上下文（按时间顺序）：\n");
+            for (ChatMessage message : history) {
+                if ("user".equals(message.getRole())) {
+                    prompt.append("用户：").append(message.getContent()).append('\n');
+                } else if ("assistant".equals(message.getRole())) {
+                    prompt.append("助手：").append(message.getContent()).append('\n');
+                }
+            }
+            prompt.append('\n');
         }
-        
-        prompt.append(request.getQuestion());
-        
+
+        if (request.getCode() != null && !request.getCode().isEmpty()) {
+            prompt.append("当前代码：\n```\n")
+                    .append(request.getCode())
+                    .append("\n```\n\n");
+        }
+
+        prompt.append("当前问题：")
+                .append(request.getQuestion() == null ? "" : request.getQuestion());
+
         return prompt.toString();
+    }
+
+    private String resolveSessionId(String rawSessionId) {
+        if (rawSessionId == null || rawSessionId.isBlank()) {
+            return UUID.randomUUID().toString();
+        }
+        return rawSessionId;
     }
 
     /**

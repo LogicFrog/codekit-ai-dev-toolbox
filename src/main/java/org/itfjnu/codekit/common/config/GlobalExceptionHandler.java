@@ -38,7 +38,7 @@ public class GlobalExceptionHandler {
     // ========== 参数校验异常 ==========
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentNotValid(MethodArgumentNotValidException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleMethodArgumentNotValid(MethodArgumentNotValidException ex) {
         String detail = ex.getBindingResult().getFieldErrors().stream()
                 .map(this::formatFieldError)
                 .collect(Collectors.joining("; "));
@@ -49,7 +49,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BindException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBindException(BindException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleBindException(BindException ex) {
         String detail = ex.getBindingResult().getFieldErrors().stream()
                 .map(this::formatFieldError)
                 .collect(Collectors.joining("; "));
@@ -60,7 +60,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleConstraintViolation(ConstraintViolationException ex) {
         String detail = ex.getConstraintViolations().stream()
                 .map(this::formatConstraintViolation)
                 .collect(Collectors.joining("; "));
@@ -71,7 +71,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMissingParameter(MissingServletRequestParameterException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleMissingParameter(MissingServletRequestParameterException ex) {
         String msg = String.format("缺少必要参数: %s", ex.getParameterName());
         log.warn("缺少参数: {}", msg);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -79,7 +79,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         String msg = String.format("参数类型错误: %s 应为 %s 类型", 
                 ex.getName(), ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "未知");
         log.warn("参数类型错误: {}", msg);
@@ -88,7 +88,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleIllegalArgument(IllegalArgumentException ex) {
         String msg = ErrorCode.PARAM_INVALID.getMessage() + ": " + ex.getMessage();
         log.debug("非法参数: {}", msg);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -98,7 +98,7 @@ public class GlobalExceptionHandler {
     // ========== HTTP 请求异常 ==========
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
         String msg = "请求体格式错误或缺失";
         log.warn("请求体不可读: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -106,7 +106,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
         String msg = String.format("请求方法 %s 不支持，支持的方法: %s", 
                 ex.getMethod(), ex.getSupportedHttpMethods());
         log.warn("请求方法不支持: {}", msg);
@@ -115,7 +115,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex) {
         String msg = String.format("不支持的媒体类型: %s，支持的类型: %s", 
                 ex.getContentType(), ex.getSupportedMediaTypes());
         log.warn("媒体类型不支持: {}", msg);
@@ -124,7 +124,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
         String msg = String.format("上传文件大小超出限制，最大允许: %s", ex.getMaxUploadSize());
         log.warn("上传文件过大: {}", msg);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -132,7 +132,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(NoHandlerFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleNotFound(NoHandlerFoundException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleNotFound(NoHandlerFoundException ex) {
         String msg = String.format("请求路径不存在: %s", ex.getRequestURL());
         log.warn("请求路径不存在: {}", msg);
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -142,7 +142,7 @@ public class GlobalExceptionHandler {
     // ========== 权限异常 ==========
 
     // @ExceptionHandler(AccessDeniedException.class)
-    // public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+    // public ResponseEntity<ApiResponse<Boolean>> handleAccessDenied(AccessDeniedException ex) {
     //     String msg = "无权限访问该资源";
     //     log.warn("访问被拒绝: {}", ex.getMessage());
     //     return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -152,7 +152,7 @@ public class GlobalExceptionHandler {
     // ========== 数据库异常 ==========
 
     @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
         String msg = "数据完整性约束违反";
         log.error("数据完整性异常: {}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -160,7 +160,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(DataAccessException.class)
-    public ResponseEntity<ApiResponse<Void>> handleDataAccess(DataAccessException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleDataAccess(DataAccessException ex) {
         String msg = "数据库访问异常";
         log.error("数据库访问异常: {}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -170,7 +170,7 @@ public class GlobalExceptionHandler {
     // ========== 业务异常 ==========
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleBusinessException(BusinessException ex) {
         String msg = ex.getMessage();
         log.warn("业务异常: {}", msg);
         return createResponse(ex.getErrorCode(), msg);
@@ -179,7 +179,7 @@ public class GlobalExceptionHandler {
     // ========== 服务异常 ==========
 
     @ExceptionHandler(ServiceException.class)
-    public ResponseEntity<ApiResponse<Void>> handleServiceException(ServiceException ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleServiceException(ServiceException ex) {
         String msg = ex.getMessage();
         log.error("服务异常: {}", msg, ex);
         return createResponse(ex.getErrorCode(), msg);
@@ -188,7 +188,7 @@ public class GlobalExceptionHandler {
     // ========== 未知异常 ==========
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleAll(Exception ex) {
+    public ResponseEntity<ApiResponse<Boolean>> handleAll(Exception ex) {
         log.error("系统未处理异常", ex);
         return createResponse(ErrorCode.SERVER_ERROR, "系统内部繁忙，请稍后再试");
     }
@@ -216,7 +216,7 @@ public class GlobalExceptionHandler {
     /**
      * 创建响应
      */
-    private ResponseEntity<ApiResponse<Void>> createResponse(ErrorCode errorCode, String message) {
+    private ResponseEntity<ApiResponse<Boolean>> createResponse(ErrorCode errorCode, String message) {
         HttpStatus status = switch (errorCode) {
             case UNAUTHORIZED, AI_INVALID_API_KEY, AI_API_KEY_EXPIRED -> HttpStatus.UNAUTHORIZED;
             case FORBIDDEN, FILE_PERMISSION_DENIED -> HttpStatus.FORBIDDEN;

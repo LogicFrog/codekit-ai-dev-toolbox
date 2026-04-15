@@ -42,6 +42,11 @@ public class DoubaoRequest {
     private Integer maxTokens;
 
     /**
+     * 是否使用流式输出
+     */
+    private Boolean stream;
+
+    /**
      * 温度参数（0-2）
      * 控制输出的随机性
      * 0：最确定性，2：最随机

@@ -36,7 +36,7 @@ const routes: Array<RouteRecordRaw> = [
         path: 'ai-assistant',
         name: 'AIAssistant',
         component: () => import('@/views/AIAssistant.vue'),
-        meta: { title: 'AI 助手', icon: 'ChatDotRound', status: 'preview' }
+        meta: { title: 'AI 助手', icon: 'ChatDotRound', status: 'full' }
       },
       {
         path: 'settings',

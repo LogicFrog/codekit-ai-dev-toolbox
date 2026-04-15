@@ -65,7 +65,7 @@ const menuItems = [
   { path: '/code-manager', title: '代码管理', icon: Folder, status: 'full' },
   { path: '/search-center', title: '检索中心', icon: Search, status: 'full' },
   { path: '/version-control', title: '版本管理', icon: Timer, status: 'limited' },
-  { path: '/ai-assistant', title: 'AI 助手', icon: ChatDotRound, status: 'preview' },
+  { path: '/ai-assistant', title: 'AI 助手', icon: ChatDotRound, status: 'full' },
   { path: '/settings', title: '设置', icon: Setting, status: 'full' }
 ]
 

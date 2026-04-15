@@ -23,5 +23,5 @@ public interface VersionInfoRepository extends JpaRepository<VersionInfo, Long> 
      * 根据代码片段 ID 删除所有版本
      * @param snippetId 代码片段 ID
      */
-    void deleteBySnippetId(Long snippetId);
+    long deleteBySnippetId(Long snippetId);
 }

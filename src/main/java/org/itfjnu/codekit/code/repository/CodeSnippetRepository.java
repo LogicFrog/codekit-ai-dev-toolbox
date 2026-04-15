@@ -23,7 +23,7 @@ public interface CodeSnippetRepository extends JpaRepository<CodeSnippet, Long> 
 
     CodeSnippet findByFileMd5(String fileMd5);
 
-    void deleteByFilePath(String filePath);
+    long deleteByFilePath(String filePath);
 
     List<CodeSnippet> findByLanguageType(String languageType);
 

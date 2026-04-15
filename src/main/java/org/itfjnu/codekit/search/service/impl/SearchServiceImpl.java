@@ -143,12 +143,13 @@ public class SearchServiceImpl implements SearchService {
     }
 
     @Override
-    public void saveSearchHistory(String keyword) {
+    public Boolean saveSearchHistory(String keyword) {
         SearchHistory history = new SearchHistory();
         history.setKeyword(keyword);
         history.setSearchType(0);
         searchHistoryRepository.save(history);
         log.info("保存搜索历史: {}", keyword);
+        return Boolean.TRUE;
     }
 
     @Override
@@ -157,9 +158,10 @@ public class SearchServiceImpl implements SearchService {
     }
 
     @Override
-    public void clearSearchHistory() {
-        searchHistoryRepository.deleteAllBy();
+    public Boolean clearSearchHistory() {
+        long deleted = searchHistoryRepository.deleteAllBy();
         log.info("清空搜索历史");
+        return deleted >= 0;
     }
 
     @Override

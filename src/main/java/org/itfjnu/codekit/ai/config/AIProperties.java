@@ -44,6 +44,11 @@ public class AIProperties {
     private int maxTokens = 2048;
 
     /**
+     * Temperature (0-2)
+     */
+    private Double temperature = 1.0;
+
+    /**
      * Check if the configuration is valid
      */
     public boolean isConfigured() {

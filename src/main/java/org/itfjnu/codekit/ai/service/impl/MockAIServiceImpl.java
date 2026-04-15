@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.itfjnu.codekit.ai.dto.AIChatRequest;
 import org.itfjnu.codekit.ai.dto.AIChatResponse;
 import org.itfjnu.codekit.ai.service.AIService;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -23,6 +24,28 @@ public class MockAIServiceImpl implements AIService {
                 .codeBlocks(null)
                 .error(null)
                 .build();
+    }
+
+    @Override
+    public SseEmitter chatStream(AIChatRequest request) {
+        SseEmitter emitter = new SseEmitter(60000L);
+        try {
+            emitter.send(SseEmitter.event()
+                    .name("chunk")
+                    .data(java.util.Map.of(
+                            "content", "【Mock模式】你问的是：" + request.getQuestion(),
+                            "sessionId", request.getSessionId() == null ? "mock-session" : request.getSessionId()
+                    )));
+            emitter.send(SseEmitter.event()
+                    .name("done")
+                    .data(java.util.Map.of(
+                            "sessionId", request.getSessionId() == null ? "mock-session" : request.getSessionId()
+                    )));
+            emitter.complete();
+        } catch (Exception e) {
+            emitter.completeWithError(e);
+        }
+        return emitter;
     }
 
     @Override

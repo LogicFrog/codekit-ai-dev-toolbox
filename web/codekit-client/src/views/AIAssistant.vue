@@ -10,7 +10,7 @@
       <!-- 输入区域 -->
       <div class="input-section">
         <div class="input-row">
-          <div class="input-group">
+          <div class="input-group" v-if="mode === 'explain'">
             <label class="input-label">编程语言</label>
             <el-select v-model="form.languageType" placeholder="选择语言" clearable style="width: 160px">
               <el-option label="Java" value="Java" />
@@ -27,6 +27,20 @@
               <el-radio-button value="chat">自由对话</el-radio-button>
               <el-radio-button value="explain">代码解释</el-radio-button>
             </el-radio-group>
+          </div>
+        </div>
+
+        <div class="input-group temperature-group">
+          <label class="input-label">温度（Temperature）: {{ temperature.toFixed(1) }}</label>
+          <div class="temperature-row">
+            <el-slider
+              v-model="temperature"
+              :min="0"
+              :max="2"
+              :step="0.1"
+              style="flex: 1"
+            />
+            <el-button :loading="temperatureSaving" @click="handleSaveTemperature">保存温度</el-button>
           </div>
         </div>
 
@@ -61,6 +75,9 @@
             <el-icon><ChatDotRound /></el-icon>
             {{ mode === 'explain' ? '解释代码' : '发送' }}
           </el-button>
+          <el-button size="large" @click="handleNewChat">
+            新对话
+          </el-button>
           <el-button size="large" @click="handleClear">
             <el-icon><Delete /></el-icon>
             清空
@@ -68,10 +85,25 @@
         </div>
       </div>
 
+      <!-- 对话历史 -->
+      <div class="conversation-section" v-if="conversation.length">
+        <div
+          v-for="(msg, index) in conversation"
+          :key="`${msg.role}-${index}`"
+          class="message-item"
+          :class="msg.role === 'user' ? 'message-user' : 'message-ai'"
+        >
+          <div class="message-role">
+            {{ msg.role === 'user' ? '你' : 'AI' }}
+          </div>
+          <div class="message-content">{{ msg.content }}</div>
+        </div>
+      </div>
+
       <!-- 响应区域 -->
       <div class="response-section" v-if="hasResponse">
         <div class="response-header">
-          <span class="response-title">AI 回复</span>
+          <span class="response-title">最近一次回复详情</span>
           <el-tag v-if="errorMessage" type="danger" size="small">错误</el-tag>
         </div>
 
@@ -135,13 +167,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { onMounted, ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   ChatDotRound, Delete, WarningFilled, InfoFilled, Document, DocumentCopy
 } from '@element-plus/icons-vue'
-import { aiChat, aiExplain } from '@/api/ai'
-import type { AIChatRequest, AIChatResponse } from '@/types'
+import { aiChatStream, aiExplain, clearAiSession, getAiSessionMessages, getAiTemperature, setAiTemperature } from '@/api/ai'
+import type { AIChatRequest, AIChatResponse, AIMessage } from '@/types'
 import { extractErrorMessage } from '@/utils/helpers'
 
 // 表单数据
@@ -161,9 +193,47 @@ const loading = ref(false)
 const response = ref<AIChatResponse | null>(null)
 const hasResponse = ref(false)
 const errorMessage = ref('')
+const conversation = ref<AIMessage[]>([])
+const temperature = ref(1.0)
+const temperatureSaving = ref(false)
 
-// 会话ID（简单生成）
-const sessionId = ref(`session-${Date.now()}`)
+const SESSION_STORAGE_KEY = 'codekit-ai-session-id'
+const sessionId = ref<string | undefined>(undefined)
+
+onMounted(async () => {
+  const cachedSessionId = localStorage.getItem(SESSION_STORAGE_KEY) || undefined
+  if (cachedSessionId) {
+    sessionId.value = cachedSessionId
+    try {
+      const messages = await getAiSessionMessages(cachedSessionId, 10)
+      conversation.value = messages
+    } catch (error) {
+      console.warn('加载会话历史失败', error)
+    }
+  }
+
+  try {
+    const currentTemperature = await getAiTemperature()
+    if (typeof currentTemperature === 'number') {
+      temperature.value = Number(currentTemperature.toFixed(1))
+    }
+  } catch (error) {
+    console.warn('加载温度失败，使用默认值', error)
+  }
+})
+
+const handleSaveTemperature = async () => {
+  temperatureSaving.value = true
+  try {
+    const saved = await setAiTemperature(Number(temperature.value.toFixed(1)))
+    temperature.value = Number(saved.toFixed(1))
+    ElMessage.success(`温度已更新为 ${temperature.value.toFixed(1)}`)
+  } catch (error: any) {
+    ElMessage.error(extractErrorMessage(error, '温度设置失败'))
+  } finally {
+    temperatureSaving.value = false
+  }
+}
 
 // 提交请求
 const handleSubmit = async () => {
@@ -183,21 +253,53 @@ const handleSubmit = async () => {
   errorMessage.value = ''
 
   try {
+    const userContent = mode.value === 'chat'
+      ? form.question.trim()
+      : (form.question?.trim() || '请解释我刚刚输入的代码')
+    conversation.value.push({ role: 'user', content: userContent })
+
     const requestData: AIChatRequest = {
-      question: form.question,
-      code: form.code,
-      languageType: form.languageType,
+      question: userContent,
+      code: mode.value === 'explain' ? form.code : undefined,
+      languageType: mode.value === 'explain' ? form.languageType : undefined,
       sessionId: sessionId.value
     }
 
     if (mode.value === 'chat') {
-      response.value = await aiChat(requestData)
+      const assistantMessage: AIMessage = { role: 'assistant', content: '' }
+      conversation.value.push(assistantMessage)
+      await aiChatStream(requestData, {
+        onChunk: (chunk, streamedSessionId) => {
+          assistantMessage.content += chunk
+          if (streamedSessionId) {
+            sessionId.value = streamedSessionId
+            localStorage.setItem(SESSION_STORAGE_KEY, streamedSessionId)
+          }
+        },
+        onDone: (doneSessionId, answer) => {
+          if (doneSessionId) {
+            sessionId.value = doneSessionId
+            localStorage.setItem(SESSION_STORAGE_KEY, doneSessionId)
+          }
+          response.value = {
+            answer: answer || assistantMessage.content,
+            sessionId: doneSessionId || sessionId.value
+          }
+        },
+        onError: (message) => {
+          throw new Error(message)
+        }
+      })
     } else {
       response.value = await aiExplain(requestData)
+      if (response.value?.answer) {
+        conversation.value.push({ role: 'assistant', content: response.value.answer })
+      }
     }
   } catch (error: any) {
     console.error('AI 请求失败:', error)
     errorMessage.value = extractErrorMessage(error, '请求失败，请稍后重试')
+    conversation.value.pop()
   } finally {
     loading.value = false
   }
@@ -211,6 +313,25 @@ const handleClear = () => {
   response.value = null
   errorMessage.value = ''
   hasResponse.value = false
+}
+
+const handleNewChat = async () => {
+  const currentSessionId = sessionId.value
+  if (currentSessionId) {
+    try {
+      await clearAiSession(currentSessionId)
+    } catch (error) {
+      console.warn('清空会话失败，将继续本地重置', error)
+    }
+  }
+  sessionId.value = undefined
+  localStorage.removeItem(SESSION_STORAGE_KEY)
+  conversation.value = []
+  response.value = null
+  errorMessage.value = ''
+  hasResponse.value = false
+  form.question = ''
+  form.code = ''
 }
 
 // 复制代码
@@ -263,6 +384,48 @@ const copyCode = async (code: string) => {
   margin-bottom: var(--spacing-xl);
 }
 
+.conversation-section {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+}
+
+.message-item {
+  margin-bottom: var(--spacing-md);
+}
+
+.message-item:last-child {
+  margin-bottom: 0;
+}
+
+.message-role {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--spacing-2xs);
+}
+
+.message-content {
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-user .message-content {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+}
+
+.message-ai .message-content {
+  background: var(--color-bg-sunken);
+  color: var(--color-text-primary);
+}
+
 .input-row {
   display: flex;
   gap: var(--spacing-xl);
@@ -274,6 +437,16 @@ const copyCode = async (code: string) => {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+}
+
+.temperature-group {
+  margin-bottom: var(--spacing-md);
+}
+
+.temperature-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
 }
 
 .input-group.code-group {

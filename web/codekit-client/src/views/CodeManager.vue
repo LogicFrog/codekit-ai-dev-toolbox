@@ -28,10 +28,9 @@
       </div>
 
       <div class="toolbar-actions">
-        <el-button @click="showAIDrawer = true" disabled>
+        <el-button @click="router.push('/ai-assistant')">
           <el-icon><ChatDotRound /></el-icon>
           AI 助手
-          <span class="preview-tag">预留</span>
         </el-button>
       </div>
     </section>
@@ -456,32 +455,6 @@
       </div>
     </el-dialog>
 
-    <el-drawer
-      v-model="showAIDrawer"
-      title="AI 助手"
-      size="400px"
-      :close-on-click-modal="false"
-    >
-      <div class="ai-placeholder">
-        <el-icon class="ai-icon"><ChatDotRound /></el-icon>
-        <h3>AI 助手功能开发中</h3>
-        <p>后续这里会优先补上未分类代码自动归类能力。</p>
-        <div class="ai-features">
-          <div class="feature-item">
-            <el-icon><Check /></el-icon>
-            <span>未分类代码智能归类</span>
-          </div>
-          <div class="feature-item">
-            <el-icon><Check /></el-icon>
-            <span>代码解释与优化建议</span>
-          </div>
-          <div class="feature-item">
-            <el-icon><Check /></el-icon>
-            <span>Bug 检测与修复建议</span>
-          </div>
-        </div>
-      </div>
-    </el-drawer>
   </div>
 </template>
 
@@ -539,7 +512,6 @@ const showImportDialog = ref(false)
 const showCreateCategoryDialog = ref(false)
 const showFileExplorer = ref(false)
 const showScanExplorer = ref(false)
-const showAIDrawer = ref(false)
 const showTagInput = ref(false)
 const newTag = ref('')
 const newCategoryName = ref('')
@@ -1017,16 +989,6 @@ onMounted(async () => {
   width: min(520px, 100%);
 }
 
-.preview-tag {
-  margin-left: var(--spacing-xs);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  background: var(--color-bg-muted);
-  border: 1px solid var(--color-border-default);
-  color: var(--color-text-secondary);
-  font-size: 10px;
-}
-
 .main-content {
   flex: 1;
   min-height: 0;
@@ -1247,8 +1209,7 @@ onMounted(async () => {
 .file-name-cell,
 .current-path,
 .dependencies-list,
-.tags-container,
-.feature-item {
+.tags-container {
   display: flex;
   align-items: center;
 }
@@ -1260,8 +1221,7 @@ onMounted(async () => {
 .file-name-cell,
 .current-path,
 .dependencies-list,
-.tags-container,
-.feature-item {
+.tags-container {
   gap: var(--spacing-sm);
 }
 
@@ -1429,8 +1389,7 @@ onMounted(async () => {
 }
 
 .empty-state,
-.empty-detail,
-.ai-placeholder {
+.empty-detail {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1448,12 +1407,8 @@ onMounted(async () => {
   min-height: 460px;
 }
 
-.empty-icon,
-.ai-icon {
-  color: var(--color-text-hint);
-}
-
 .empty-icon {
+  color: var(--color-text-hint);
   font-size: 54px;
 }
 
@@ -1469,11 +1424,6 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--color-text-primary);
   margin: var(--spacing-md) 0 0;
-}
-
-.ai-placeholder p {
-  font-size: var(--text-sm);
-  color: var(--color-text-tertiary);
 }
 
 .file-explorer {
@@ -1497,38 +1447,6 @@ onMounted(async () => {
 
 .folder-icon {
   color: var(--color-warning);
-}
-
-.ai-placeholder {
-  height: 100%;
-  padding: var(--spacing-4xl);
-}
-
-.ai-icon {
-  font-size: 64px;
-  margin-bottom: var(--spacing-xl);
-}
-
-.ai-placeholder h3 {
-  margin: 0 0 var(--spacing-sm);
-  color: var(--color-text-primary);
-  font-size: var(--text-lg);
-}
-
-.ai-features {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-  margin-top: var(--spacing-lg);
-}
-
-.feature-item {
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-}
-
-.feature-item .el-icon {
-  color: var(--color-success);
 }
 
 @media (max-width: 1120px) {

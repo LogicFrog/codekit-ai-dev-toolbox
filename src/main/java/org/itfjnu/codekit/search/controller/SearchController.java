@@ -69,9 +69,9 @@ public class SearchController {
      */
     @Operation(summary = "清空搜索历史", description = "清空指定用户的搜索历史记录")
     @DeleteMapping("/history")
-    public ApiResponse<Void> clearSearchHistory() {
-        searchService.clearSearchHistory();
-        return ApiResponse.success();
+    public ApiResponse<Boolean> clearSearchHistory() {
+        Boolean cleared = searchService.clearSearchHistory();
+        return ApiResponse.success(cleared);
     }
 
     /**

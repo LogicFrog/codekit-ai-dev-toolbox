@@ -26,6 +26,9 @@ public class AIChatResponse {
     @Schema(description = "错误信息")
     private String error;
 
+    @Schema(description = "会话ID")
+    private String sessionId;
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -39,5 +42,6 @@ public class AIChatResponse {
 
         @Schema(description = "代码说明")
         private String description;
+
     }
 }

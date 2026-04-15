@@ -15,5 +15,5 @@ public interface CodeDependencyRepository extends JpaRepository<CodeDependency, 
     List<CodeDependency> findByCodeSnippetId(Long codeSnippetId);
 
     // 删除指定代码片段的所有依赖（代码删除时联动）
-    void deleteByCodeSnippetId(Long codeSnippetId);
+    long deleteByCodeSnippetId(Long codeSnippetId);
 }

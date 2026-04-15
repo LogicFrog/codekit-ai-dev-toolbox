@@ -119,10 +119,17 @@ export interface AIChatResponse {
   answer: string
   suggestions?: string[]
   codeBlocks?: CodeBlock[]
+  sessionId?: string
 }
 
 export interface CodeBlock {
   language: string
   code: string
   description?: string
+}
+
+export interface AIMessage {
+  role: 'user' | 'assistant' | string
+  content: string
+  time?: string
 }
