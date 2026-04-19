@@ -91,3 +91,19 @@ CREATE TABLE IF NOT EXISTS `search_history` (
     PRIMARY KEY (`id`),
     KEY `idx_search_time` (`search_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='检索历史表';
+
+-- 7. 代码向量表（语义检索）
+CREATE TABLE IF NOT EXISTS `code_embedding` (
+    `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `snippet_id` bigint NOT NULL COMMENT '代码片段ID',
+    `embedding_json` longtext COLLATE utf8mb4_general_ci NOT NULL COMMENT '向量(JSON数组)',
+    `embedding_dim` int NOT NULL COMMENT '向量维度',
+    `model_name` varchar(100) DEFAULT NULL COMMENT '向量模型名',
+    `create_time` datetime(6) DEFAULT NULL COMMENT '创建时间',
+    `update_time` datetime(6) DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_snippet_id` (`snippet_id`),
+    KEY `idx_update_time` (`update_time`),
+    CONSTRAINT `fk_embedding_snippet_id`
+        FOREIGN KEY (`snippet_id`) REFERENCES `code_snippet` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='代码向量表';

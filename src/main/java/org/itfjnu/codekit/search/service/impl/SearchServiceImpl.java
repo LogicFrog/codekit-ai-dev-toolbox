@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.itfjnu.codekit.code.model.CodeSnippet;
+import org.itfjnu.codekit.code.repository.CodeSnippetRepository;
 import org.itfjnu.codekit.common.cache.RedisCacheService;
 import org.itfjnu.codekit.common.dto.ErrorCode;
 import org.itfjnu.codekit.common.exception.BusinessException;
@@ -13,6 +14,7 @@ import org.itfjnu.codekit.search.dto.SearchResponse;
 import org.itfjnu.codekit.search.model.SearchHistory;
 import org.itfjnu.codekit.search.repository.SearchHistoryRepository;
 import org.itfjnu.codekit.search.service.SearchService;
+import org.itfjnu.codekit.search.service.VectorIndexService;
 import org.itfjnu.codekit.search.service.support.SearchQueryExecutor;
 import org.itfjnu.codekit.search.service.support.SearchResponseAssembler;
 import org.springframework.data.domain.Page;
@@ -39,6 +41,8 @@ public class SearchServiceImpl implements SearchService {
     private final ObjectMapper objectMapper;
     private final SearchQueryExecutor searchQueryExecutor;
     private final SearchResponseAssembler searchResponseAssembler;
+    private final VectorIndexService vectorIndexService;
+    private final CodeSnippetRepository codeSnippetRepository;
 
     @Override
     public Page<SearchResponse> keywordSearch(SearchRequest request) {
@@ -138,8 +142,45 @@ public class SearchServiceImpl implements SearchService {
 
     @Override
     public Page<SearchResponse> semanticSearch(SearchRequest request) {
-        log.info("执行语义检索，关键词: {}", request.getKeyword());
-        throw new BusinessException(ErrorCode.FEATURE_NOT_IMPLEMENTED, "语义检索功能尚未实现，请使用关键词检索");
+        if (request.getKeyword() == null || request.getKeyword().isBlank()) {
+            throw new BusinessException(ErrorCode.SEARCH_KEYWORD_EMPTY);
+        }
+
+        List<Long> sortedIds = vectorIndexService.searchTopKByText(request.getKeyword(), 100);
+        if (sortedIds.isEmpty()) {
+            return emptyPage(buildPageable(request));
+        }
+
+        List<CodeSnippet> snippetList = codeSnippetRepository.findAllById(sortedIds);
+        if (snippetList.isEmpty()) {
+            return emptyPage(buildPageable(request));
+        }
+
+        Map<Long, Integer> idOrder = java.util.stream.IntStream.range(0, sortedIds.size())
+                .boxed()
+                .collect(Collectors.toMap(sortedIds::get, i -> i));
+
+        snippetList = snippetList.stream()
+                .filter(snippet -> request.getLanguageType() == null
+                        || request.getLanguageType().equals(snippet.getLanguageType()))
+                .filter(snippet -> request.getTag() == null
+                        || (snippet.getTags() != null && snippet.getTags().contains(request.getTag())))
+                .sorted(java.util.Comparator.comparingInt(s -> idOrder.getOrDefault(s.getId(), Integer.MAX_VALUE)))
+                .toList();
+
+        List<SearchResponse> content = snippetList.stream()
+                .map(snippet -> searchResponseAssembler.toSearchResponse(snippet, request.getKeyword()))
+                .toList();
+
+        Pageable pageable = buildPageable(request);
+        int start = Math.toIntExact(pageable.getOffset());
+        int end = Math.min(start + pageable.getPageSize(), content.size());
+        if (start >= content.size()) {
+            return emptyPage(pageable);
+        }
+        List<SearchResponse> pageContent = content.subList(start, end);
+
+        return new PageImpl<>(pageContent, pageable, content.size());
     }
 
     @Override

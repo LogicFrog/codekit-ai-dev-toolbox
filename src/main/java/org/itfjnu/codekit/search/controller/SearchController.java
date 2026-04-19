@@ -9,6 +9,7 @@ import org.itfjnu.codekit.search.dto.SearchRequest;
 import org.itfjnu.codekit.search.dto.SearchResponse;
 import org.itfjnu.codekit.search.model.SearchHistory;
 import org.itfjnu.codekit.search.service.SearchService;
+import org.itfjnu.codekit.search.service.VectorIndexService;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +25,7 @@ import java.util.List;
 public class SearchController {
 
     private final SearchService searchService;
+    private final VectorIndexService vectorIndexService;
 
     /**
      * 关键词检索
@@ -38,16 +40,17 @@ public class SearchController {
         return ApiResponse.success(result);
     }
 
-    /**
-     * 语义检索（RAG，后续实现）
-     * 请求方式: POST
-     * 请求路径: /api/search/semantic
-     */
-    @Operation(summary = "语义检索", description = "基于 RAG 的语义检索（暂未实现）")
+    @Operation(summary = "语义检索", description = "基于向量相似度的 RAG 语义检索")
     @PostMapping("/semantic")
     public ApiResponse<Page<SearchResponse>> semanticSearch(@Valid @RequestBody SearchRequest request) {
         Page<SearchResponse> result = searchService.semanticSearch(request);
         return ApiResponse.success(result);
+    }
+
+    @Operation(summary = "重建语义索引", description = "为所有代码片段重建向量索引")
+    @PostMapping("/semantic/rebuild")
+    public ApiResponse<Boolean> rebuildSemanticIndex() {
+        return ApiResponse.success(vectorIndexService.rebuildAllEmbeddings());
     }
 
     /**

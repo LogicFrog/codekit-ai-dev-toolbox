@@ -80,6 +80,10 @@ public enum ErrorCode {
     AI_STREAM_INTERRUPTED(5010, "AI 流式响应中断"),
     AI_EMPTY_RESPONSE(5011, "AI 未返回有效回答"),
     AI_RESPONSE_READ_FAILED(5012, "AI 响应读取失败"),
+    EMBEDDING_TEXT_EMPTY(5013, "文本向量化内容不能为空"),
+    EMBEDDING_API_REQUEST_FAILED(5014, "文本向量API调用失败"),
+    EMBEDDING_RESPONSE_PARSE_ERROR(5015, "文本向量响应解析失败"),
+    EMBEDDING_RESULT_EMPTY(5016, "文本向量生成结果为空"),
     FEATURE_NOT_IMPLEMENTED(5998, "功能尚未实现"),
     AI_FAILED(5999, "AI 处理失败"),
 

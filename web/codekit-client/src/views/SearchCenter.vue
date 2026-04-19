@@ -28,12 +28,7 @@
             <span class="option-label">搜索类型</span>
             <el-radio-group v-model="searchForm.searchType" size="default">
               <el-radio-button value="keyword">关键词</el-radio-button>
-              <el-radio-button value="semantic" disabled>
-                语义搜索
-                <el-tooltip content="语义搜索功能开发中" placement="top">
-                  <el-icon class="lock-icon"><Lock /></el-icon>
-                </el-tooltip>
-              </el-radio-button>
+              <el-radio-button value="semantic">语义搜索</el-radio-button>
             </el-radio-group>
           </div>
 
@@ -184,7 +179,7 @@
         <div class="empty-results" v-else>
           <el-icon class="empty-icon"><Search /></el-icon>
           <h3>未找到匹配结果</h3>
-          <p>尝试调整搜索条件或使用不同的关键词</p>
+          <p>{{ searchForm.searchType === 'semantic' ? '语义检索未命中，可尝试关键词检索' : '尝试调整搜索条件或使用不同的关键词' }}</p>
         </div>
 
         <div class="pagination" v-if="total > pageSize">
@@ -263,9 +258,9 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Search, Lock, RefreshLeft, Document, Clock, PriceTag, ArrowRight, DocumentCopy
+  Search, RefreshLeft, Document, Clock, PriceTag, ArrowRight, DocumentCopy
 } from '@element-plus/icons-vue'
-import { keywordSearch, getHotKeywords, getSearchHistory } from '@/api/search'
+import { keywordSearch, semanticSearch, getHotKeywords, getSearchHistory } from '@/api/search'
 import { getAllCodeSnippets, getCodeSnippet } from '@/api/code'
 import type { SearchResponse, SearchHistory, CodeSnippet } from '@/types'
 import { formatRelativeTime, getLanguageColor, getCodePreview, copyToClipboard, extractErrorMessage } from '@/utils/helpers'
@@ -318,7 +313,8 @@ const handleSearch = async () => {
   hasSearched.value = true
 
   try {
-    const result = await keywordSearch({
+    const searchApi = searchForm.searchType === 'semantic' ? semanticSearch : keywordSearch
+    const result = await searchApi({
       keyword: searchForm.keyword || undefined,
       languageType: searchForm.language || undefined,
       tag: searchForm.tag || undefined,
@@ -495,12 +491,6 @@ onMounted(() => {
 .option-label {
   font-size: var(--text-sm);
   color: var(--color-text-tertiary);
-}
-
-.lock-icon {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  margin-left: var(--spacing-xs);
 }
 
 .quick-access {

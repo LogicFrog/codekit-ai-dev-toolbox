@@ -12,6 +12,7 @@ import org.itfjnu.codekit.code.service.CodeCategoryService;
 import org.itfjnu.codekit.code.service.CodeSnippetService;
 import org.itfjnu.codekit.common.dto.ErrorCode;
 import org.itfjnu.codekit.common.exception.BusinessException;
+import org.itfjnu.codekit.search.service.VectorIndexService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ public class CodeSnippetServiceImpl implements CodeSnippetService {
     private final CodeDependencyRepository codeDependencyRepository;
     private final VersionInfoRepository versionInfoRepository;
     private final CodeCategoryService codeCategoryService;
+    private final VectorIndexService vectorIndexService;
 
     @Override
     public CodeSnippet saveOrUpdateCodeSnippet(CodeSnippet snippet) {
@@ -39,6 +41,7 @@ public class CodeSnippetServiceImpl implements CodeSnippetService {
             Optional<CodeSnippet> existingSnippet = codeSnippetRepository.findById(snippet.getId());
             if (existingSnippet.isPresent()) {
                 CodeSnippet saved = codeSnippetRepository.save(applySnippetChanges(existingSnippet.get(), snippet));
+                vectorIndexService.upsertSnippetEmbedding(saved);
                 log.info("按 ID 更新代码片段成功：id={}, filePath={}", saved.getId(), saved.getFilePath());
                 return saved;
             }
@@ -49,6 +52,7 @@ public class CodeSnippetServiceImpl implements CodeSnippetService {
             Optional<CodeSnippet> existingByPath = codeSnippetRepository.findByFilePath(snippet.getFilePath());
             if (existingByPath.isPresent()) {
                 CodeSnippet saved = codeSnippetRepository.save(applySnippetChanges(existingByPath.get(), snippet));
+                vectorIndexService.upsertSnippetEmbedding(saved);
                 log.info("按路径更新代码片段成功：id={}, filePath={}", saved.getId(), saved.getFilePath());
                 return saved;
             }
@@ -56,6 +60,7 @@ public class CodeSnippetServiceImpl implements CodeSnippetService {
 
         snippet.setCategory(resolveCategory(snippet.getCategory(), true));
         CodeSnippet saved = codeSnippetRepository.save(snippet);
+        vectorIndexService.upsertSnippetEmbedding(saved);
         log.info("新建代码片段成功：id={}, filePath={}", saved.getId(), saved.getFilePath());
         return saved;
     }
@@ -67,6 +72,7 @@ public class CodeSnippetServiceImpl implements CodeSnippetService {
         codeDependencyRepository.deleteByCodeSnippetId(id);
         versionInfoRepository.deleteBySnippetId(id);
         codeSnippetRepository.deleteById(id);
+        vectorIndexService.deleteSnippetEmbedding(id);
         return true;
     }
 
@@ -134,6 +140,7 @@ public class CodeSnippetServiceImpl implements CodeSnippetService {
         codeDependencyRepository.deleteByCodeSnippetId(snippet.getId());
         versionInfoRepository.deleteBySnippetId(snippet.getId());
         codeSnippetRepository.deleteByFilePath(filePath);
+        vectorIndexService.deleteSnippetEmbedding(snippet.getId());
         return true;
     }
 

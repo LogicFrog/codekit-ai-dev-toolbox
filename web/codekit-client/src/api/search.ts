@@ -9,6 +9,10 @@ export const semanticSearch = (params: SearchRequest): Promise<PageResult<Search
   return request.post<PageResult<SearchResponse>>('/search/semantic', params)
 }
 
+export const rebuildSemanticIndex = (): Promise<boolean> => {
+  return request.post<boolean>('/search/semantic/rebuild')
+}
+
 export const getHotKeywords = (): Promise<string[]> => {
   return request.get<string[]>('/search/hot-keywords')
 }
