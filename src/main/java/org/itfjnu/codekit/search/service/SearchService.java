@@ -21,7 +21,7 @@ public interface SearchService {
     /**
      * 检索历史记录
      */
-    Boolean saveSearchHistory(String keyword);
+    Boolean saveSearchHistory(String keyword, Integer searchType);
 
     /**
      * 获取搜索历史

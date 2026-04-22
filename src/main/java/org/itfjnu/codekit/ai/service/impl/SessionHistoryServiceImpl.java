@@ -12,9 +12,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayDeque;
@@ -43,6 +45,7 @@ public class SessionHistoryServiceImpl implements SessionHistoryService {
     private final ObjectMapper objectMapper;
 
     private final Map<String, Deque<ChatMessage>> sessionStore = new ConcurrentHashMap<>();
+    private final Object fileWriteLock = new Object();
 
     @PostConstruct
     public void init() {
@@ -137,17 +140,30 @@ public class SessionHistoryServiceImpl implements SessionHistoryService {
     }
 
     private void flushToDiskSafe() {
-        try {
-            Path path = Paths.get(storeFile);
-            Files.createDirectories(path.getParent());
+        synchronized (fileWriteLock) {
+            try {
+                Path path = Paths.get(storeFile);
+                Path parent = path.getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
 
-            Map<String, List<ChatMessage>> snapshot = new ConcurrentHashMap<>();
-            for (Map.Entry<String, Deque<ChatMessage>> entry : sessionStore.entrySet()) {
-                snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+                Map<String, List<ChatMessage>> snapshot = new ConcurrentHashMap<>();
+                for (Map.Entry<String, Deque<ChatMessage>> entry : sessionStore.entrySet()) {
+                    snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+                }
+
+                Path tmpPath = path.resolveSibling(path.getFileName() + ".tmp");
+                objectMapper.writerWithDefaultPrettyPrinter().writeValue(tmpPath.toFile(), snapshot);
+
+                try {
+                    Files.move(tmpPath, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException e) {
+                    Files.move(tmpPath, path, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException e) {
+                log.error("会话历史写入 JSON 失败: {}", e.getMessage(), e);
             }
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), snapshot);
-        } catch (IOException e) {
-            log.error("会话历史写入 JSON 失败: {}", e.getMessage(), e);
         }
     }
 

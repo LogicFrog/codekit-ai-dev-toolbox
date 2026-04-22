@@ -1,12 +1,52 @@
 import request from '@/utils/request'
 import type { SearchRequest, SearchResponse, PageResult, SearchHistory } from '@/types'
 
-export const keywordSearch = (params: SearchRequest): Promise<PageResult<SearchResponse>> => {
-  return request.post<PageResult<SearchResponse>>('/search/keyword', params)
+type RawPageResult<T> = Partial<PageResult<T>> & {
+  content?: T[]
+  page?: {
+    size?: number
+    number?: number
+    totalElements?: number
+    totalPages?: number
+  }
 }
 
-export const semanticSearch = (params: SearchRequest): Promise<PageResult<SearchResponse>> => {
-  return request.post<PageResult<SearchResponse>>('/search/semantic', params)
+const normalizePageResult = <T>(raw: RawPageResult<T> | null | undefined): PageResult<T> => {
+  const content = Array.isArray(raw?.content) ? raw!.content : []
+  const page = raw?.page
+
+  const size = Number(raw?.size ?? page?.size ?? 0)
+  const number = Number(raw?.number ?? page?.number ?? 0)
+  const totalElements = Number(raw?.totalElements ?? page?.totalElements ?? content.length)
+  const totalPages = Number(
+    raw?.totalPages
+      ?? page?.totalPages
+      ?? (size > 0 ? Math.ceil(totalElements / size) : (totalElements > 0 ? 1 : 0))
+  )
+  const first = typeof raw?.first === 'boolean' ? raw.first : number <= 0
+  const last = typeof raw?.last === 'boolean' ? raw.last : (totalPages === 0 ? true : number >= totalPages - 1)
+  const empty = typeof raw?.empty === 'boolean' ? raw.empty : content.length === 0
+
+  return {
+    content,
+    totalElements,
+    totalPages,
+    size,
+    number,
+    first,
+    last,
+    empty
+  }
+}
+
+export const keywordSearch = async (params: SearchRequest): Promise<PageResult<SearchResponse>> => {
+  const raw = await request.post<RawPageResult<SearchResponse>>('/search/keyword', params)
+  return normalizePageResult(raw)
+}
+
+export const semanticSearch = async (params: SearchRequest): Promise<PageResult<SearchResponse>> => {
+  const raw = await request.post<RawPageResult<SearchResponse>>('/search/semantic', params)
+  return normalizePageResult(raw)
 }
 
 export const rebuildSemanticIndex = (): Promise<boolean> => {

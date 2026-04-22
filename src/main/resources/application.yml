@@ -44,3 +44,6 @@ ai:
   base-url: ${CODEKIT_AI_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}
   timeout: ${CODEKIT_AI_TIMEOUT:30000}
   max-tokens: ${CODEKIT_AI_MAX_TOKENS:2048}
+  embedding-api: ${CODEKIT_AI_EMBEDDING_API:}
+  embedding-model: ${CODEKIT_AI_EMBEDDING_MODEL:}
+  embedding-api-key: ${CODEKIT_AI_EMBEDDING_API_KEY:${CODEKIT_AI_API_KEY:}}

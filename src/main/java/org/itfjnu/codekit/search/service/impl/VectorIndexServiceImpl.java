@@ -12,15 +12,24 @@ import org.itfjnu.codekit.search.model.CodeEmbedding;
 import org.itfjnu.codekit.search.repository.CodeEmbeddingRepository;
 import org.itfjnu.codekit.search.service.EmbeddingService;
 import org.itfjnu.codekit.search.service.VectorIndexService;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.*;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class VectorIndexServiceImpl implements VectorIndexService {
+    private static final int DEFAULT_MAX_SCAN = 5000;
+    private static final int MAX_CANDIDATE_SCAN = 8000;
 
     private final CodeEmbeddingRepository codeEmbeddingRepository;
     private final CodeSnippetRepository codeSnippetRepository;
@@ -79,18 +88,28 @@ public class VectorIndexServiceImpl implements VectorIndexService {
 
     @Override
     public List<Long> searchTopKByText(String query, int topK) {
+        return searchTopKByText(query, topK, null);
+    }
+
+    @Override
+    public List<Long> searchTopKByText(String query, int topK, Collection<Long> candidateSnippetIds) {
         try {
             List<Double> queryVec = embeddingService.embedText(query);
             if (queryVec == null || queryVec.isEmpty()) {
                 return List.of();
             }
-            List<CodeEmbedding> all = codeEmbeddingRepository.findAll();
+            int effectiveTopK = Math.max(1, topK);
+            List<CodeEmbedding> all = loadEmbeddingsForSearch(candidateSnippetIds);
+            if (all.isEmpty()) {
+                return List.of();
+            }
             List<Map.Entry<Long, Double>> scores = new ArrayList<>();
 
             for (CodeEmbedding em : all) {
                 List<Double> vec = objectMapper.readValue(
                         em.getEmbeddingJson(),
-                        new TypeReference<List<Double>>() {}
+                        new TypeReference<>() {
+                        }
                 );
                 double sim = cosineSimilarity(queryVec, vec);
                 scores.add(new AbstractMap.SimpleEntry<>(em.getSnippetId(), sim));
@@ -99,7 +118,7 @@ public class VectorIndexServiceImpl implements VectorIndexService {
             scores.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
 
             return scores.stream()
-                    .limit(topK)
+                    .limit(effectiveTopK)
                     .map(Map.Entry::getKey)
                     .toList();
         } catch (BusinessException e) {
@@ -108,6 +127,21 @@ public class VectorIndexServiceImpl implements VectorIndexService {
             log.error("语义检索失败", e);
             throw new BusinessException(ErrorCode.SEARCH_FAILED);
         }
+    }
+
+    private List<CodeEmbedding> loadEmbeddingsForSearch(Collection<Long> candidateSnippetIds) {
+        if (candidateSnippetIds != null && !candidateSnippetIds.isEmpty()) {
+            Set<Long> candidateSet = new LinkedHashSet<>(candidateSnippetIds);
+            if (candidateSet.size() > MAX_CANDIDATE_SCAN) {
+                candidateSet = candidateSet.stream()
+                        .limit(MAX_CANDIDATE_SCAN)
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+                log.info("语义候选集过大，已裁剪到 {} 条", MAX_CANDIDATE_SCAN);
+            }
+            return codeEmbeddingRepository.findBySnippetIdIn(candidateSet);
+        }
+        return codeEmbeddingRepository.findAllByOrderByUpdateTimeDesc(PageRequest.of(0, DEFAULT_MAX_SCAN))
+                .getContent();
     }
 
     @Override

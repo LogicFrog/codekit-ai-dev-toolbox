@@ -23,6 +23,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -72,7 +73,7 @@ public class SearchServiceImpl implements SearchService {
         cacheResponses(cacheKey, responses);
 
         if (hasKeyword) {
-            saveSearchHistory(request.getKeyword());
+            saveSearchHistory(request.getKeyword(), 0);
         }
 
         return paginate(responses, pageable);
@@ -145,8 +146,14 @@ public class SearchServiceImpl implements SearchService {
         if (request.getKeyword() == null || request.getKeyword().isBlank()) {
             throw new BusinessException(ErrorCode.SEARCH_KEYWORD_EMPTY);
         }
+        saveSearchHistory(request.getKeyword(), 1);
 
-        List<Long> sortedIds = vectorIndexService.searchTopKByText(request.getKeyword(), 100);
+        List<Long> candidateIds = findCandidateSnippetIdsByFilters(request);
+        if (candidateIds != null && candidateIds.isEmpty()) {
+            return emptyPage(buildPageable(request));
+        }
+
+        List<Long> sortedIds = vectorIndexService.searchTopKByText(request.getKeyword(), 100, candidateIds);
         if (sortedIds.isEmpty()) {
             return emptyPage(buildPageable(request));
         }
@@ -156,16 +163,12 @@ public class SearchServiceImpl implements SearchService {
             return emptyPage(buildPageable(request));
         }
 
-        Map<Long, Integer> idOrder = java.util.stream.IntStream.range(0, sortedIds.size())
-                .boxed()
-                .collect(Collectors.toMap(sortedIds::get, i -> i));
+        Map<Long, CodeSnippet> snippetById = snippetList.stream()
+                .collect(Collectors.toMap(CodeSnippet::getId, s -> s, (a, b) -> a, LinkedHashMap::new));
 
-        snippetList = snippetList.stream()
-                .filter(snippet -> request.getLanguageType() == null
-                        || request.getLanguageType().equals(snippet.getLanguageType()))
-                .filter(snippet -> request.getTag() == null
-                        || (snippet.getTags() != null && snippet.getTags().contains(request.getTag())))
-                .sorted(java.util.Comparator.comparingInt(s -> idOrder.getOrDefault(s.getId(), Integer.MAX_VALUE)))
+        snippetList = sortedIds.stream()
+                .map(snippetById::get)
+                .filter(java.util.Objects::nonNull)
                 .toList();
 
         List<SearchResponse> content = snippetList.stream()
@@ -184,13 +187,31 @@ public class SearchServiceImpl implements SearchService {
     }
 
     @Override
-    public Boolean saveSearchHistory(String keyword) {
+    public Boolean saveSearchHistory(String keyword, Integer searchType) {
         SearchHistory history = new SearchHistory();
         history.setKeyword(keyword);
-        history.setSearchType(0);
+        history.setSearchType(searchType == null ? 0 : searchType);
         searchHistoryRepository.save(history);
-        log.info("保存搜索历史: {}", keyword);
+        log.info("保存搜索历史: keyword={}, type={}", keyword, history.getSearchType());
         return Boolean.TRUE;
+    }
+
+    private List<Long> findCandidateSnippetIdsByFilters(SearchRequest request) {
+        String language = request.getLanguageType();
+        String tag = request.getTag();
+        if (language == null && tag == null) {
+            return null;
+        }
+
+        List<CodeSnippet> snippets;
+        if (language != null && tag != null) {
+            snippets = codeSnippetRepository.findByLanguageTypeAndTagName(language, tag);
+        } else if (language != null) {
+            snippets = codeSnippetRepository.findByLanguageType(language);
+        } else {
+            snippets = codeSnippetRepository.findByTagName(tag);
+        }
+        return snippets.stream().map(CodeSnippet::getId).toList();
     }
 
     @Override

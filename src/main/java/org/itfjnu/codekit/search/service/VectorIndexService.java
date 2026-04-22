@@ -2,6 +2,7 @@ package org.itfjnu.codekit.search.service;
 
 import org.itfjnu.codekit.code.model.CodeSnippet;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -30,6 +31,15 @@ public interface VectorIndexService {
      * @return list of matched code snippet IDs
      */
     List<Long> searchTopKByText(String query, int topK);
+
+    /**
+     * Search top-K most similar code snippets in candidate snippet IDs.
+     * @param query text search query
+     * @param topK number of results to return
+     * @param candidateSnippetIds optional candidate snippet ID set for pre-filtering
+     * @return list of matched code snippet IDs
+     */
+    List<Long> searchTopKByText(String query, int topK, Collection<Long> candidateSnippetIds);
 
     /**
      * Rebuild vector embeddings for all code snippets

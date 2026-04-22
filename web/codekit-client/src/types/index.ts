@@ -85,6 +85,12 @@ export interface PageResult<T> {
   first: boolean
   last: boolean
   empty: boolean
+  page?: {
+    size?: number
+    number?: number
+    totalElements?: number
+    totalPages?: number
+  }
 }
 
 export interface SearchHistory {
