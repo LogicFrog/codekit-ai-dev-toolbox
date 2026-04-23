@@ -1,6 +1,31 @@
 import request from '@/utils/request'
 import type { AIChatRequest, AIChatResponse, AIMessage } from '@/types'
 
+export interface AgentExecuteRequest {
+  instruction: string
+  sessionId?: string
+}
+
+export interface AgentTask {
+  taskName: string
+  skillName: string
+  params: Record<string, unknown>
+}
+
+export interface SkillResult {
+  success: boolean
+  skillName: string
+  data?: unknown
+  error?: string
+}
+
+export interface AgentExecuteResponse {
+  instruction: string
+  tasks: AgentTask[]
+  results: SkillResult[]
+  summary: string
+}
+
 /**
  * AI 对话接口
  */
@@ -13,6 +38,13 @@ export const aiChat = (data: AIChatRequest): Promise<AIChatResponse> => {
  */
 export const aiExplain = (data: AIChatRequest): Promise<AIChatResponse> => {
   return request.post<AIChatResponse>('/ai/explain', data, { timeout: 120000 })
+}
+
+/**
+ * Agent 执行接口
+ */
+export const aiAgentExecute = (data: AgentExecuteRequest): Promise<AgentExecuteResponse> => {
+  return request.post<AgentExecuteResponse>('/ai/agent/execute', data, { timeout: 120000 })
 }
 
 /**

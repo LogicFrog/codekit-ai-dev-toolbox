@@ -26,6 +26,7 @@
             <el-radio-group v-model="mode" size="default">
               <el-radio-button value="chat">自由对话</el-radio-button>
               <el-radio-button value="explain">代码解释</el-radio-button>
+              <el-radio-button value="agent">Agent 编排</el-radio-button>
             </el-radio-group>
           </div>
         </div>
@@ -59,13 +60,13 @@
         <!-- 问题输入区 -->
         <div class="input-group">
           <label class="input-label">
-            {{ mode === 'explain' ? '问题描述（可选）' : '问题' }}
+            {{ mode === 'explain' ? '问题描述（可选）' : (mode === 'agent' ? 'Agent 指令' : '问题') }}
           </label>
           <el-input
             v-model="form.question"
             type="textarea"
             :rows="3"
-            :placeholder="mode === 'explain' ? '有什么想问的？' : '输入你的问题...'"
+            :placeholder="mode === 'explain' ? '有什么想问的？' : (mode === 'agent' ? '例如：帮我搜索缓存代码并解释风险，再查询 snippetId=1 的版本历史' : '输入你的问题...')"
           />
         </div>
 
@@ -73,7 +74,7 @@
         <div class="action-buttons">
           <el-button type="primary" size="large" @click="handleSubmit" :loading="loading">
             <el-icon><ChatDotRound /></el-icon>
-            {{ mode === 'explain' ? '解释代码' : '发送' }}
+            {{ mode === 'explain' ? '解释代码' : (mode === 'agent' ? '执行 Agent' : '发送') }}
           </el-button>
           <el-button size="large" @click="handleNewChat">
             新对话
@@ -102,12 +103,8 @@
 
       <!-- 响应区域 -->
       <div class="response-section" v-if="hasResponse">
-        <div class="response-header">
-          <span class="response-title">最近一次回复详情</span>
-          <el-tag v-if="errorMessage" type="danger" size="small">错误</el-tag>
-        </div>
-
         <div class="response-content" v-loading="loading">
+          <el-tag v-if="errorMessage" type="danger" size="small" style="margin-bottom: 12px;">错误</el-tag>
           <!-- 错误信息 -->
           <div class="error-block" v-if="errorMessage">
             <el-icon><WarningFilled /></el-icon>
@@ -117,6 +114,74 @@
           <!-- 回答内容 -->
           <div class="answer-block" v-if="response?.answer">
             <pre>{{ response.answer }}</pre>
+          </div>
+
+          <div class="agent-block" v-if="agentResponse">
+            <pre class="agent-summary">{{ agentResponse.summary }}</pre>
+
+            <div class="block-title" v-if="agentSearchItems.length">检索命中</div>
+            <div class="agent-result-list" v-if="agentSearchItems.length">
+              <div
+                class="agent-result-item"
+                v-for="(item, index) in agentSearchItems"
+                :key="`${item.id ?? index}-${item.filePath ?? ''}`"
+                @click="viewAgentSearchResult(item)"
+              >
+                <div class="result-header">
+                  <div class="result-title">
+                    <el-icon class="result-icon"><Document /></el-icon>
+                    <span class="result-name">{{ item.fileName || item.filePath || '未命名代码片段' }}</span>
+                  </div>
+                  <span
+                    class="language-tag"
+                    :style="{ backgroundColor: getLanguageColor(item.languageType || '') + '20', color: getLanguageColor(item.languageType || '') }"
+                  >
+                    {{ item.languageType || 'Unknown' }}
+                  </span>
+                </div>
+                <div class="result-path">{{ item.filePath || '-' }}</div>
+                <div class="result-footer">
+                  <div class="result-meta">
+                    <span class="meta-item" v-if="item.createTime">
+                      <el-icon><Clock /></el-icon>
+                      {{ formatRelativeTime(item.createTime) }}
+                    </span>
+                    <span class="meta-item" v-if="item.tags?.length">
+                      <el-icon><PriceTag /></el-icon>
+                      {{ item.tags.slice(0, 3).join(', ') }}
+                    </span>
+                  </div>
+                  <el-button text size="small" type="primary">
+                    查看详情
+                    <el-icon><ArrowRight /></el-icon>
+                  </el-button>
+                </div>
+              </div>
+            </div>
+
+            <div class="block-title" v-if="agentVersionItems.length">版本历史</div>
+            <div class="code-block-item" v-for="(item, index) in agentVersionItems" :key="`${item.id ?? index}-version`">
+              <div class="code-block-header">
+                <span class="code-language">snippetId={{ item.snippetId ?? '-' }}</span>
+                <span class="code-description">{{ item.versionName || `版本 #${index + 1}` }}</span>
+              </div>
+              <pre class="code-content"><code>创建时间: {{ item.createTime || '-' }}
+描述: {{ item.description || '暂无描述' }}</code></pre>
+            </div>
+
+            <div class="block-title">任务拆解</div>
+            <ul class="suggestions-list">
+              <li v-for="(task, index) in agentResponse.tasks" :key="`${task.skillName}-${index}`">
+                {{ index + 1 }}. {{ task.taskName }}（{{ task.skillName }}）
+              </li>
+            </ul>
+
+            <div class="block-title">执行结果</div>
+            <ul class="suggestions-list">
+              <li v-for="(result, index) in agentResponse.results" :key="`${result.skillName}-${index}`">
+                {{ index + 1 }}. {{ result.skillName }}：{{ result.success ? '成功' : `失败（${result.error || '未知错误'}）` }}
+              </li>
+            </ul>
           </div>
 
           <!-- 建议列表 -->
@@ -162,19 +227,78 @@
         <el-icon class="empty-icon"><ChatDotRound /></el-icon>
         <p>输入问题或代码，让 AI 帮助你</p>
       </div>
+
+      <el-drawer
+        v-model="showDetailDrawer"
+        title="代码详情"
+        size="640px"
+        :close-on-click-modal="false"
+      >
+        <div class="detail-content" v-if="selectedSearchItem">
+          <div class="detail-header">
+            <div class="detail-title">
+              <el-icon class="detail-icon"><Document /></el-icon>
+              <span class="detail-name">{{ selectedSearchItem.fileName || selectedSearchItem.filePath || '未命名代码片段' }}</span>
+            </div>
+            <div class="detail-tags">
+              <span
+                class="language-tag"
+                :style="{ backgroundColor: getLanguageColor(selectedSearchItem.languageType || '') + '20', color: getLanguageColor(selectedSearchItem.languageType || '') }"
+              >
+                {{ selectedSearchItem.languageType || 'Unknown' }}
+              </span>
+              <el-tag v-for="tag in selectedSearchItem.tags || []" :key="tag" size="small">{{ tag }}</el-tag>
+            </div>
+          </div>
+
+          <div class="detail-meta">
+            <div class="meta-row">
+              <span class="meta-label">路径</span>
+              <span class="meta-value mono">{{ selectedSearchItem.filePath || '-' }}</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">创建</span>
+              <span class="meta-value">{{ selectedSearchItem.createTime ? formatRelativeTime(selectedSearchItem.createTime) : '-' }}</span>
+            </div>
+          </div>
+
+          <div class="detail-code">
+            <div class="code-header">
+              <span class="code-title">代码内容</span>
+              <el-button size="small" @click="copyDetailCode" :loading="copying">
+                <el-icon><DocumentCopy /></el-icon>
+                复制
+              </el-button>
+            </div>
+            <div class="code-content" v-loading="loadingFullCode">
+              <pre><code>{{ fullCodeContent }}</code></pre>
+            </div>
+          </div>
+        </div>
+      </el-drawer>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, reactive } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  ChatDotRound, Delete, WarningFilled, InfoFilled, Document, DocumentCopy
+  ArrowRight, ChatDotRound, Clock, Delete, WarningFilled, InfoFilled, Document, DocumentCopy, PriceTag
 } from '@element-plus/icons-vue'
-import { aiChatStream, aiExplain, clearAiSession, getAiSessionMessages, getAiTemperature, setAiTemperature } from '@/api/ai'
+import {
+  aiAgentExecute,
+  aiChatStream,
+  aiExplain,
+  clearAiSession,
+  getAiSessionMessages,
+  getAiTemperature,
+  setAiTemperature
+} from '@/api/ai'
+import { getCodeSnippet } from '@/api/code'
+import type { AgentExecuteResponse } from '@/api/ai'
 import type { AIChatRequest, AIChatResponse, AIMessage } from '@/types'
-import { extractErrorMessage } from '@/utils/helpers'
+import { copyToClipboard, extractErrorMessage, formatRelativeTime, getLanguageColor } from '@/utils/helpers'
 
 // 表单数据
 const form = reactive<AIChatRequest>({
@@ -183,22 +307,97 @@ const form = reactive<AIChatRequest>({
   languageType: ''
 })
 
-// 模式：chat 对话 / explain 代码解释
-const mode = ref<'chat' | 'explain'>('chat')
+// 模式：chat 对话 / explain 代码解释 / agent 编排
+const mode = ref<'chat' | 'explain' | 'agent'>('chat')
 
 // 加载状态
 const loading = ref(false)
 
 // 响应数据
 const response = ref<AIChatResponse | null>(null)
+const agentResponse = ref<AgentExecuteResponse | null>(null)
 const hasResponse = ref(false)
 const errorMessage = ref('')
 const conversation = ref<AIMessage[]>([])
 const temperature = ref(1.0)
 const temperatureSaving = ref(false)
+const showDetailDrawer = ref(false)
+const selectedSearchItem = ref<AgentSearchItem | null>(null)
+const fullCodeContent = ref('')
+const loadingFullCode = ref(false)
+const copying = ref(false)
 
 const SESSION_STORAGE_KEY = 'codekit-ai-session-id'
 const sessionId = ref<string | undefined>(undefined)
+
+interface AgentSearchItem {
+  id?: number
+  fileName?: string
+  filePath?: string
+  languageType?: string
+  codePreview?: string
+  createTime?: string
+  tags?: string[]
+}
+
+interface AgentVersionItem {
+  id?: number
+  snippetId?: number
+  versionName?: string
+  description?: string
+  createTime?: string
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null
+}
+
+const extractAgentExplainAnswer = (payload: AgentExecuteResponse | null): string => {
+  const explainResult = payload?.results?.find((item) => item.skillName === 'ai_explain')
+  if (!explainResult || !explainResult.success || !isRecord(explainResult.data)) {
+    return ''
+  }
+  const answer = explainResult.data.answer
+  return typeof answer === 'string' ? answer.trim() : ''
+}
+
+const agentSearchItems = computed<AgentSearchItem[]>(() => {
+  const target = agentResponse.value?.results?.find((item) => item.skillName === 'code_search')
+  if (!target || !target.success || !isRecord(target.data)) {
+    return []
+  }
+  const items = target.data.items
+  if (!Array.isArray(items)) {
+    return []
+  }
+  return items.filter(isRecord).map((item) => ({
+    id: typeof item.id === 'number' ? item.id : undefined,
+    fileName: typeof item.fileName === 'string' ? item.fileName : undefined,
+    filePath: typeof item.filePath === 'string' ? item.filePath : undefined,
+    languageType: typeof item.languageType === 'string' ? item.languageType : undefined,
+    codePreview: typeof item.codePreview === 'string' ? item.codePreview : undefined,
+    createTime: typeof item.createTime === 'string' ? item.createTime : undefined,
+    tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === 'string') : []
+  }))
+})
+
+const agentVersionItems = computed<AgentVersionItem[]>(() => {
+  const target = agentResponse.value?.results?.find((item) => item.skillName === 'version_list')
+  if (!target || !target.success || !isRecord(target.data)) {
+    return []
+  }
+  const items = target.data.items
+  if (!Array.isArray(items)) {
+    return []
+  }
+  return items.filter(isRecord).map((item) => ({
+    id: typeof item.id === 'number' ? item.id : undefined,
+    snippetId: typeof item.snippetId === 'number' ? item.snippetId : undefined,
+    versionName: typeof item.versionName === 'string' ? item.versionName : undefined,
+    description: typeof item.description === 'string' ? item.description : undefined,
+    createTime: typeof item.createTime === 'string' ? item.createTime : undefined
+  }))
+})
 
 onMounted(async () => {
   const cachedSessionId = localStorage.getItem(SESSION_STORAGE_KEY) || undefined
@@ -242,6 +441,10 @@ const handleSubmit = async () => {
     ElMessage.warning('请输入问题')
     return
   }
+  if (mode.value === 'agent' && !form.question.trim()) {
+    ElMessage.warning('请输入 Agent 指令')
+    return
+  }
   if (mode.value === 'explain' && !form.code?.trim()) {
     ElMessage.warning('请输入需要解释的代码')
     return
@@ -250,12 +453,13 @@ const handleSubmit = async () => {
   loading.value = true
   hasResponse.value = true
   response.value = null
+  agentResponse.value = null
   errorMessage.value = ''
 
   try {
     const userContent = mode.value === 'chat'
       ? form.question.trim()
-      : (form.question?.trim() || '请解释我刚刚输入的代码')
+      : (mode.value === 'explain' ? (form.question?.trim() || '请解释我刚刚输入的代码') : form.question.trim())
     conversation.value.push({ role: 'user', content: userContent })
 
     const requestData: AIChatRequest = {
@@ -290,11 +494,21 @@ const handleSubmit = async () => {
           throw new Error(message)
         }
       })
-    } else {
+    } else if (mode.value === 'explain') {
       response.value = await aiExplain(requestData)
       if (response.value?.answer) {
         conversation.value.push({ role: 'assistant', content: response.value.answer })
       }
+    } else {
+      agentResponse.value = await aiAgentExecute({
+        instruction: userContent,
+        sessionId: sessionId.value
+      })
+      const explainAnswer = extractAgentExplainAnswer(agentResponse.value)
+      conversation.value.push({
+        role: 'assistant',
+        content: explainAnswer || agentResponse.value.summary || 'Agent 执行完成'
+      })
     }
   } catch (error: any) {
     console.error('AI 请求失败:', error)
@@ -311,6 +525,7 @@ const handleClear = () => {
   form.code = ''
   form.languageType = ''
   response.value = null
+  agentResponse.value = null
   errorMessage.value = ''
   hasResponse.value = false
 }
@@ -328,6 +543,7 @@ const handleNewChat = async () => {
   localStorage.removeItem(SESSION_STORAGE_KEY)
   conversation.value = []
   response.value = null
+  agentResponse.value = null
   errorMessage.value = ''
   hasResponse.value = false
   form.question = ''
@@ -336,11 +552,47 @@ const handleNewChat = async () => {
 
 // 复制代码
 const copyCode = async (code: string) => {
-  try {
-    await navigator.clipboard.writeText(code)
+  const success = await copyToClipboard(code)
+  if (success) {
     ElMessage.success('代码已复制')
-  } catch {
+  } else {
     ElMessage.error('复制失败')
+  }
+}
+
+const viewAgentSearchResult = async (item: AgentSearchItem) => {
+  selectedSearchItem.value = item
+  showDetailDrawer.value = true
+  fullCodeContent.value = ''
+  loadingFullCode.value = true
+  try {
+    if (typeof item.id === 'number') {
+      const fullSnippet = await getCodeSnippet(item.id)
+      fullCodeContent.value = fullSnippet.codeContent || item.codePreview || ''
+    } else {
+      fullCodeContent.value = item.codePreview || ''
+    }
+  } catch (error) {
+    console.error('加载完整代码失败:', error)
+    fullCodeContent.value = item.codePreview || ''
+  } finally {
+    loadingFullCode.value = false
+  }
+}
+
+const copyDetailCode = async () => {
+  if (!selectedSearchItem.value) return
+  copying.value = true
+  try {
+    const codeToCopy = fullCodeContent.value || selectedSearchItem.value.codePreview || ''
+    const success = await copyToClipboard(codeToCopy)
+    if (success) {
+      ElMessage.success('代码已复制')
+    } else {
+      ElMessage.error('复制失败')
+    }
+  } finally {
+    copying.value = false
   }
 }
 </script>
@@ -482,21 +734,6 @@ const copyCode = async (code: string) => {
   overflow: hidden;
 }
 
-.response-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-md) var(--spacing-xl);
-  background: var(--color-bg-sunken);
-  border-bottom: 1px solid var(--color-border-muted);
-}
-
-.response-title {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
 .response-content {
   padding: var(--spacing-xl);
 }
@@ -518,6 +755,22 @@ const copyCode = async (code: string) => {
 
 .answer-block pre {
   margin: 0;
+  padding: var(--spacing-lg);
+  background: var(--color-bg-sunken);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.agent-block {
+  margin-bottom: var(--spacing-lg);
+}
+
+.agent-summary {
+  margin: 0 0 var(--spacing-lg);
   padding: var(--spacing-lg);
   background: var(--color-bg-sunken);
   border-radius: var(--radius-md);
@@ -600,6 +853,159 @@ const copyCode = async (code: string) => {
 
 .code-content code {
   white-space: pre;
+}
+
+.agent-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.agent-result-item {
+  padding: var(--spacing-lg);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.agent-result-item:hover {
+  border-color: var(--color-accent-primary);
+  background-color: var(--color-bg-sunken);
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.result-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.result-icon {
+  font-size: 18px;
+  color: var(--color-accent-primary);
+  flex-shrink: 0;
+}
+
+.result-name {
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.language-tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.result-path {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-bottom: var(--spacing-md);
+}
+
+.result-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.result-meta {
+  display: flex;
+  gap: var(--spacing-lg);
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.detail-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.detail-icon {
+  font-size: 24px;
+  color: var(--color-accent-primary);
+}
+
+.detail-name {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.detail-tags {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.detail-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  background: var(--color-bg-sunken);
+  border-radius: var(--radius-md);
+}
+
+.meta-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2xs);
+}
+
+.meta-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.meta-value {
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+}
+
+.meta-value.mono {
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.detail-code {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
 }
 
 .empty-state {

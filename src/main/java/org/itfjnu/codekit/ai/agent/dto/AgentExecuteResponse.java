@@ -11,7 +11,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AgentExecuteResponce {
+public class AgentExecuteResponse {
     private String instruction;
     private List<AgentTask> tasks;
     private List<SkillResult> results;
