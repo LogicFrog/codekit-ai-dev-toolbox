@@ -80,6 +80,19 @@ public class CodeSearchSkillImpl implements Skill {
                         .ifPresent(code -> context.put("search_top_code", code));
             }
 
+            if (items.isEmpty()) {
+                return SkillResult.builder()
+                        .success(Boolean.FALSE)
+                        .skillName(name())
+                        .error("未找到匹配的代码片段，请检查搜索关键词：" + effectiveKeyword)
+                        .data(Map.of(
+                                "mode", effectiveMode,
+                                "keyword", effectiveKeyword,
+                                "total", 0
+                        ))
+                        .build();
+            }
+
             return SkillResult.builder()
                     .success(Boolean.TRUE)
                     .skillName(name())

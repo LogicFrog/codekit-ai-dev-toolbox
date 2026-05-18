@@ -169,6 +169,40 @@
 描述: {{ item.description || '暂无描述' }}</code></pre>
             </div>
 
+            <div class="block-title" v-if="agentOptimizeData">代码优化</div>
+            <div class="code-block-item" v-if="agentOptimizeData">
+              <div class="code-block-header">
+                <span class="code-language">优化类型: {{ agentOptimizeData.optimizeType ?? '综合' }}</span>
+              </div>
+              <div class="code-content" style="padding: var(--spacing-md);">
+                <pre style="margin: 0; white-space: pre-wrap; word-break: break-word; font-size: var(--text-sm); line-height: 1.6;">{{ agentOptimizeData.answer || '暂无优化建议' }}</pre>
+                <div style="margin-top: var(--spacing-md);" v-if="agentOptimizeData.suggestions?.length">
+                  <strong style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-sm); display: block;">具体建议</strong>
+                  <ul class="suggestions-list" style="margin: 0; padding-left: var(--spacing-xl);">
+                    <li v-for="(s, i) in agentOptimizeData.suggestions" :key="i">{{ s }}</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="block-title" v-if="agentCompareData">版本对比</div>
+            <div class="code-block-item" v-if="agentCompareData">
+              <div class="code-block-header">
+                <span class="code-language">snippetId={{ agentCompareData.snippetId ?? '-' }}</span>
+                <span class="code-description">版本 #{{ agentCompareData.versionAId ?? '-' }} → #{{ agentCompareData.versionBId ?? '-' }}</span>
+              </div>
+              <div class="code-content" style="padding: 0;">
+                <div style="padding: var(--spacing-md); border-bottom: 1px solid var(--color-border-muted);">
+                  <strong style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-sm); display: block;">差异对比</strong>
+                  <pre style="margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5;">{{ formatCompareDiff(agentCompareData.diff) }}</pre>
+                </div>
+                <div style="padding: var(--spacing-md);">
+                  <strong style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--spacing-sm); display: block;">AI 分析</strong>
+                  <pre style="margin: 0; white-space: pre-wrap; word-break: break-word; font-size: var(--text-sm); line-height: 1.6;">{{ formatCompareAnalysis(agentCompareData.analysis) }}</pre>
+                </div>
+              </div>
+            </div>
+
             <div class="block-title">任务拆解</div>
             <ul class="suggestions-list">
               <li v-for="(task, index) in agentResponse.tasks" :key="`${task.skillName}-${index}`">
@@ -348,6 +382,20 @@ interface AgentVersionItem {
   createTime?: string
 }
 
+interface AgentCompareData {
+  snippetId?: number
+  versionAId?: number
+  versionBId?: number
+  diff?: unknown
+  analysis?: unknown
+}
+
+interface AgentOptimizeData {
+  answer?: string
+  suggestions?: string[]
+  optimizeType?: string
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null
 }
@@ -397,6 +445,130 @@ const agentVersionItems = computed<AgentVersionItem[]>(() => {
     description: typeof item.description === 'string' ? item.description : undefined,
     createTime: typeof item.createTime === 'string' ? item.createTime : undefined
   }))
+})
+
+const agentCompareData = computed<AgentCompareData | null>(() => {
+  const target = agentResponse.value?.results?.find((item) => item.skillName === 'git_compare')
+  if (!target || !target.success || !isRecord(target.data)) {
+    return null
+  }
+  return {
+    snippetId: typeof target.data.snippetId === 'number' ? target.data.snippetId : undefined,
+    versionAId: typeof target.data.versionAId === 'number' ? target.data.versionAId : undefined,
+    versionBId: typeof target.data.versionBId === 'number' ? target.data.versionBId : undefined,
+    diff: target.data.diff,
+    analysis: target.data.analysis
+  }
+})
+
+const formatCompareDiff = (diff: unknown): string => {
+  if (diff === null || diff === undefined) return '暂无差异数据'
+  if (typeof diff === 'string') return diff
+  if (!isRecord(diff)) return '差异数据格式错误'
+  
+  let result = ''
+  if (typeof diff.summary === 'string') {
+    result += diff.summary + '\n\n'
+  }
+  if (typeof diff.addedLines === 'number' && typeof diff.removedLines === 'number') {
+    result += `新增: ${diff.addedLines} 行\n`
+    result += `删除: ${diff.removedLines} 行\n`
+    if (typeof diff.modifiedBlocks === 'number') {
+      result += `修改: ${diff.modifiedBlocks} 处\n`
+    }
+  }
+  if (Array.isArray(diff.blocks) && diff.blocks.length > 0) {
+    result += '\n--- 具体变更 ---\n'
+    diff.blocks.forEach((block, index) => {
+      if (isRecord(block)) {
+        result += `\n变更 ${index + 1}:\n`
+        if (typeof block.type === 'string') {
+          result += `类型: ${block.type}\n`
+        }
+        if (typeof block.oldContent === 'string') {
+          result += `- 旧: ${block.oldContent.substring(0, 200)}...\n`
+        }
+        if (typeof block.newContent === 'string') {
+          result += `+ 新: ${block.newContent.substring(0, 200)}...\n`
+        }
+      }
+    })
+  }
+  if (!result) {
+    try {
+      return JSON.stringify(diff, null, 2)
+    } catch {
+      return '差异数据格式错误'
+    }
+  }
+  return result
+}
+
+const formatCompareAnalysis = (analysis: unknown): string => {
+  if (analysis === null || analysis === undefined) return '暂无分析数据'
+  if (typeof analysis === 'string') return analysis
+  if (!isRecord(analysis)) return '分析数据格式错误'
+  
+  let result = ''
+  if (typeof analysis.rawAnswer === 'string') {
+    result = analysis.rawAnswer
+  } else if (typeof analysis.answer === 'string') {
+    result = analysis.answer
+  } else {
+    try {
+      result = JSON.stringify(analysis, null, 2)
+    } catch {
+      result = '分析数据格式错误'
+    }
+  }
+  return result
+}
+
+const formatOptimizeAnswer = (answer: unknown): string => {
+  if (answer === null || answer === undefined) return '暂无优化建议'
+  if (typeof answer === 'string') return answer
+  if (isRecord(answer) && typeof answer.answer === 'string') {
+    return answer.answer
+  }
+  if (isRecord(answer) && typeof answer.rawAnswer === 'string') {
+    return answer.rawAnswer
+  }
+  try {
+    return JSON.stringify(answer, null, 2)
+  } catch {
+    return '优化建议格式错误'
+  }
+}
+
+const agentOptimizeData = computed<AgentOptimizeData | null>(() => {
+  const target = agentResponse.value?.results?.find((item) => item.skillName === 'code_optimize')
+  if (!target || !target.success || !isRecord(target.data)) {
+    return null
+  }
+  const rawAnswer = target.data.answer
+  const rawSuggestions = target.data.suggestions
+  let answer: string | undefined
+  let suggestions: string[] = []
+  
+  if (isRecord(rawAnswer) && typeof rawAnswer.rawAnswer === 'string') {
+    answer = rawAnswer.rawAnswer
+  } else if (isRecord(rawAnswer) && typeof rawAnswer.answer === 'string') {
+    answer = rawAnswer.answer
+  } else if (typeof rawAnswer === 'string') {
+    answer = rawAnswer
+  }
+  
+  if (Array.isArray(rawSuggestions)) {
+    suggestions = rawSuggestions.filter((s): s is string => typeof s === 'string')
+  } else if (isRecord(rawAnswer) && Array.isArray(rawAnswer.suggestions)) {
+    suggestions = rawAnswer.suggestions.filter((s): s is string => typeof s === 'string')
+  }
+  
+  return {
+    answer,
+    suggestions,
+    optimizeType: typeof target.data.optimizeType === 'string' ? target.data.optimizeType : undefined
+  }
 })
 
 onMounted(async () => {

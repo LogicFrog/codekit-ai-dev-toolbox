@@ -38,6 +38,54 @@ export interface VersionInfo {
   createTime: string
 }
 
+export interface VersionChangeBlock {
+  type: 'ADD' | 'REMOVE' | 'MODIFY'
+  oldStartLine: number
+  oldEndLine: number
+  newStartLine: number
+  newEndLine: number
+  oldSnippet: string
+  newSnippet: string
+}
+
+export interface VersionDiffResponse {
+  snippetId: number
+  fromVersionId: number
+  toVersionId: number
+  addedLines: number
+  removedLines: number
+  modifiedBlocks: number
+  changeRate: number
+  summary: string
+  blocks: VersionChangeBlock[]
+}
+
+export interface VersionRollbackResponse {
+  snippetId: number
+  rollbackToVersionId: number
+  backupVersionId: number
+  backupVersionName: string
+  rollbackTime: string
+}
+
+export interface VersionAnalyzeRequest {
+  fromVersionId: number
+  toVersionId: number
+  focus?: string
+}
+
+export interface VersionAnalyzeResponse {
+  snippetId: number
+  fromVersionId: number
+  toVersionId: number
+  summary: string
+  riskLevel: string
+  risks: string[]
+  suggestions: string[]
+  testFocus: string[]
+  rawAnswer: string
+}
+
 export interface ScanStatusDTO {
   status: string
   processedCount: number

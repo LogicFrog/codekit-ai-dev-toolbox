@@ -424,6 +424,14 @@ public class RealAIServiceImpl implements AIService {
         return suggestions;
     }
 
+    @Override
+    public AIChatResponse optimize(AIChatRequest request) {
+        String originalQuestion = request.getQuestion();
+        if (originalQuestion == null || originalQuestion.isEmpty()) {
+            request.setQuestion("请优化这段代码，提升性能、可读性和安全性，并给出具体的优化建议");
+        }
+        return explain(request);
+    }
 
     /**
      * 截断字符串（用于日志）

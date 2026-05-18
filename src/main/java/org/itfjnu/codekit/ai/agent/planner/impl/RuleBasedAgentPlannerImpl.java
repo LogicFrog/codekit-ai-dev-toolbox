@@ -36,7 +36,9 @@ public class RuleBasedAgentPlannerImpl implements AgentPlanner {
 
         boolean needSearch = containsAny(lower, "找", "搜索", "检索", "search", "语义");
         boolean needExplain = containsAny(lower, "解释", "分析", "风险", "explain");
-        boolean needVersion = containsAny(lower, "版本", "历史", "version", "diff");
+        boolean needVersion = containsAny(lower, "版本", "历史", "version");
+        boolean needOptimize = containsAny(lower, "优化", "重构", "improve", "optimize");
+        boolean needCompare = containsAny(lower, "对比", "差异", "diff", "compare");
 
         if (needSearch) {
             Map<String, Object> params = new HashMap<>();
@@ -47,10 +49,10 @@ public class RuleBasedAgentPlannerImpl implements AgentPlanner {
             params.put("mode", "semantic");
 
             tasks.add(AgentTask.builder()
-                            .taskName("检索相关代码")
-                            .skillName("code_search")
-                            .params(params)
-                            .build());
+                    .taskName("检索相关代码")
+                    .skillName("code_search")
+                    .params(params)
+                    .build());
         }
 
         if (needExplain) {
@@ -58,15 +60,89 @@ public class RuleBasedAgentPlannerImpl implements AgentPlanner {
             params.put("question", text);
 
             tasks.add(AgentTask.builder()
-                            .taskName("解释与风险分析")
-                            .skillName("ai_explain")
-                            .params(params)
-                            .build());
+                    .taskName("解释与风险分析")
+                    .skillName("ai_explain")
+                    .params(params)
+                    .build());
         }
 
-        if (needVersion) {
+        if (needOptimize) {
             Map<String, Object> params = new HashMap<>();
+            String optimizeType = extractOptimizeType(text);
+            params.put("optimizeType", optimizeType);
+            params.put("question", text);
+
+            // 先搜索相关代码（除非用户明确有不需要搜索的关键词）
+            if (!containsAny(text, "直接优化")) {
+                Map<String, Object> searchParams = new HashMap<>();
+                String keyword = extractSearchKeyword(text);
+                searchParams.put("keyword", keyword);
+                searchParams.put("fallbackKeyword", text);
+                searchParams.put("mode", "semantic");
+                
+                tasks.add(AgentTask.builder()
+                        .taskName("搜索代码片段")
+                        .skillName("code_search")
+                        .params(searchParams)
+                        .build());
+            }
+
+            tasks.add(AgentTask.builder()
+                    .taskName("代码优化")
+                    .skillName("code_optimize")
+                    .params(params)
+                    .build());
+        }
+
+        if (needCompare) {
             Long snippetId = extractSnippetId(text);
+            
+            // 如果没有 snippetId，先搜索代码
+            if (snippetId == null) {
+                Map<String, Object> searchParams = new HashMap<>();
+                String keyword = extractSearchKeyword(text);
+                searchParams.put("keyword", keyword);
+                searchParams.put("fallbackKeyword", text);
+                searchParams.put("mode", "keyword"); // 文件名用关键词检索更准
+                
+                tasks.add(AgentTask.builder()
+                        .taskName("搜索代码片段")
+                        .skillName("code_search")
+                        .params(searchParams)
+                        .build());
+            }
+            
+            // 然后对比版本（如果有 snippetId 直接用，否则让 Skill 从上下文找 search_top_id）
+            Map<String, Object> compareParams = new HashMap<>();
+            if (snippetId != null) {
+                compareParams.put("snippetId", snippetId);
+            }
+
+            tasks.add(AgentTask.builder()
+                    .taskName("版本对比")
+                    .skillName("git_compare")
+                    .params(compareParams)
+                    .build());
+        } else if (needVersion) {
+            Long snippetId = extractSnippetId(text);
+            
+            // 如果没有 snippetId，先搜索代码
+            if (snippetId == null) {
+                Map<String, Object> searchParams = new HashMap<>();
+                String keyword = extractSearchKeyword(text);
+                searchParams.put("keyword", keyword);
+                searchParams.put("fallbackKeyword", text);
+                searchParams.put("mode", "keyword");
+                
+                tasks.add(AgentTask.builder()
+                        .taskName("搜索代码片段")
+                        .skillName("code_search")
+                        .params(searchParams)
+                        .build());
+            }
+            
+            // 然后查询版本
+            Map<String, Object> params = new HashMap<>();
             if (snippetId != null) {
                 params.put("snippetId", snippetId);
             }
@@ -77,6 +153,7 @@ public class RuleBasedAgentPlannerImpl implements AgentPlanner {
                     .params(params)
                     .build());
         }
+
         // 兜底
         if (tasks.isEmpty()) {
             Map<String, Object> params = new HashMap<>();
@@ -112,6 +189,13 @@ public class RuleBasedAgentPlannerImpl implements AgentPlanner {
             return "";
         }
 
+        // 先尝试提取文件名（如 "CategoryService.java"）
+        Pattern fileNamePattern = Pattern.compile("([a-zA-Z0-9_]+\\.[a-zA-Z0-9]+)");
+        Matcher fileNameMatcher = fileNamePattern.matcher(instruction);
+        if (fileNameMatcher.find()) {
+            return fileNameMatcher.group(1);
+        }
+
         String withoutSnippetId = SNIPPET_ID_PATTERN.matcher(instruction).replaceAll(" ");
         String normalized = TOKEN_SPLIT_PATTERN.matcher(withoutSnippetId).replaceAll(" ").trim();
         if (normalized.isEmpty()) {
@@ -129,5 +213,19 @@ public class RuleBasedAgentPlannerImpl implements AgentPlanner {
         }
 
         return keywords.stream().limit(4).collect(Collectors.joining(" "));
+    }
+
+    private String extractOptimizeType(String text) {
+        String lower = text.toLowerCase();
+        if (containsAny(lower, "性能", "performance")) {
+            return "performance";
+        }
+        if (containsAny(lower, "可读性", "readability")) {
+            return "readability";
+        }
+        if (containsAny(lower, "bug", "修复", "bugfix")) {
+            return "bugfix";
+        }
+        return "all";
     }
 }

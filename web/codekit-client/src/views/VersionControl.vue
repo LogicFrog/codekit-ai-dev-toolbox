@@ -84,6 +84,12 @@
           <el-icon><RefreshRight /></el-icon>
           交换版本
         </el-button>
+        <el-button type="warning" @click="handleRollback" v-if="selectedSnippetId && versionA">
+          回滚到 A
+        </el-button>
+        <el-button type="info" @click="handleAiAnalyze" :loading="analyzing" v-if="versionA && versionB">
+          AI 分析
+        </el-button>
         <el-button type="primary" @click="showCreateDialog = true" v-if="selectedSnippetId">
           <el-icon><Plus /></el-icon>
           创建版本
@@ -109,6 +115,9 @@
             <span class="badge-name">{{ modifiedVersion.versionName || `v${modifiedVersion.id}` }}</span>
             <span class="badge-time">{{ formatRelativeTime(modifiedVersion.createTime) }}</span>
           </div>
+        </div>
+        <div class="server-summary" v-if="serverDiff">
+          {{ serverDiff.summary }}，变更率：{{ (serverDiff.changeRate * 100).toFixed(2) }}%
         </div>
         <div class="diff-editor">
           <DiffEditor
@@ -175,15 +184,26 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showAnalyzeDialog" title="AI 版本分析" width="760px">
+      <div v-if="analyzeResult" class="analyze-result">
+        <p><strong>风险等级：</strong>{{ analyzeResult.riskLevel }}</p>
+        <p><strong>差异摘要：</strong>{{ analyzeResult.summary }}</p>
+        <pre class="ai-answer">{{ analyzeResult.rawAnswer }}</pre>
+      </div>
+      <template #footer>
+        <el-button @click="showAnalyzeDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { RefreshRight, Switch, Plus } from '@element-plus/icons-vue'
-import { listVersions, createVersion } from '@/api/version'
-import type { VersionInfo, CodeSnippet } from '@/types'
+import { listVersions, createVersion, rollbackVersion, compareVersionsApi, analyzeVersionsApi } from '@/api/version'
+import type { VersionInfo, CodeSnippet, VersionDiffResponse, VersionAnalyzeResponse } from '@/types'
 import { formatRelativeTime, extractErrorMessage } from '@/utils/helpers'
 import DiffEditor from '@/components/DiffEditor.vue'
 
@@ -195,8 +215,12 @@ const versionA = ref<number | null>(null)
 const versionB = ref<number | null>(null)
 const renderSideBySide = ref(true)
 const diffResult = ref<{ added: number; removed: number; modifications: number } | null>(null)
+const serverDiff = ref<VersionDiffResponse | null>(null)
 const diffEditorRef = ref()
 const showCreateDialog = ref(false)
+const showAnalyzeDialog = ref(false)
+const analyzeResult = ref<VersionAnalyzeResponse | null>(null)
+const analyzing = ref(false)
 const createVersionForm = ref({
   versionName: '',
   description: ''
@@ -272,6 +296,19 @@ const handleSwapVersions = () => {
   versionB.value = temp
 }
 
+const loadServerDiff = async () => {
+  if (!selectedSnippetId.value || !versionA.value || !versionB.value) {
+    serverDiff.value = null
+    return
+  }
+  try {
+    serverDiff.value = await compareVersionsApi(selectedSnippetId.value, versionA.value, versionB.value)
+  } catch (error) {
+    console.error('后端差异分析失败:', error)
+    ElMessage.error(extractErrorMessage(error, '后端差异分析失败'))
+  }
+}
+
 watch([versionA, versionB], () => {
   if (versionA.value && versionB.value) {
     setTimeout(() => {
@@ -280,10 +317,54 @@ watch([versionA, versionB], () => {
         diffResult.value = diff
       }
     }, 500)
+    void loadServerDiff()
   } else {
     diffResult.value = null
+    serverDiff.value = null
   }
 })
+
+const handleRollback = async () => {
+  if (!selectedSnippetId.value || !versionA.value) {
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      '回滚会覆盖当前代码内容，系统会自动创建备份版本，是否继续？',
+      '确认回滚',
+      { type: 'warning' }
+    )
+    await rollbackVersion(selectedSnippetId.value, versionA.value)
+    ElMessage.success('回滚成功（已自动备份当前内容）')
+    await fetchVersions(selectedSnippetId.value)
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    console.error('回滚失败:', error)
+    ElMessage.error(extractErrorMessage(error, '回滚失败'))
+  }
+}
+
+const handleAiAnalyze = async () => {
+  if (!selectedSnippetId.value || !versionA.value || !versionB.value) {
+    ElMessage.warning('请先选择两个版本')
+    return
+  }
+  analyzing.value = true
+  try {
+    analyzeResult.value = await analyzeVersionsApi(selectedSnippetId.value, {
+      fromVersionId: versionA.value,
+      toVersionId: versionB.value
+    })
+    showAnalyzeDialog.value = true
+  } catch (error) {
+    console.error('AI 分析失败:', error)
+    ElMessage.error(extractErrorMessage(error, 'AI 分析失败'))
+  } finally {
+    analyzing.value = false
+  }
+}
 
 const handleCreateVersion = async () => {
   if (!selectedSnippetId.value || !createVersionForm.value.versionName.trim()) {
@@ -484,6 +565,27 @@ onMounted(() => {
 .diff-editor {
   flex: 1;
   min-height: 0;
+}
+
+.server-summary {
+  margin: 8px var(--spacing-xl) 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.analyze-result {
+  line-height: 1.7;
+}
+
+.ai-answer {
+  margin-top: var(--spacing-md);
+  max-height: 420px;
+  overflow: auto;
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-sunken);
+  border: 1px solid var(--color-border-default);
+  white-space: pre-wrap;
 }
 
 .empty-state {

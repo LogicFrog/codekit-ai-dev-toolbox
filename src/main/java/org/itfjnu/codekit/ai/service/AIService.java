@@ -9,4 +9,5 @@ public interface AIService {
     SseEmitter chatStream(AIChatRequest request);
     AIChatResponse explain(AIChatRequest request);
     String getProviderName();
+    AIChatResponse optimize(AIChatRequest request);
 }

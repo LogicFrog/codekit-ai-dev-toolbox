@@ -1,5 +1,12 @@
 import request from '@/utils/request'
-import type { VersionInfo, CreateVersionRequest } from '@/types'
+import type {
+  VersionInfo,
+  CreateVersionRequest,
+  VersionDiffResponse,
+  VersionRollbackResponse,
+  VersionAnalyzeRequest,
+  VersionAnalyzeResponse
+} from '@/types'
 
 export const listVersions = (snippetId: number): Promise<VersionInfo[]> => {
   return request.get<VersionInfo[]>(`/code/${snippetId}/versions`)
@@ -100,4 +107,27 @@ export const importVersion = async (
   }
   
   return createVersion(snippetId, versionReq)
+}
+
+export const rollbackVersion = (snippetId: number, versionId: number): Promise<VersionRollbackResponse> => {
+  return request.post<VersionRollbackResponse>(`/code/${snippetId}/rollback/${versionId}`)
+}
+
+export const compareVersionsApi = (
+  snippetId: number,
+  fromVersionId: number,
+  toVersionId: number
+): Promise<VersionDiffResponse> => {
+  return request.get<VersionDiffResponse>(`/code/${snippetId}/versions/${fromVersionId}/diff/${toVersionId}`)
+}
+
+export const analyzeVersionsApi = (
+  snippetId: number,
+  payload: VersionAnalyzeRequest
+): Promise<VersionAnalyzeResponse> => {
+  return request.post<VersionAnalyzeResponse>(
+    `/code/${snippetId}/versions/analyze`,
+    payload,
+    { timeout: 120000 }
+  )
 }

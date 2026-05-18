@@ -3,7 +3,7 @@ package org.itfjnu.codekit.code.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.itfjnu.codekit.code.dto.CreateVersionRequest;
+import org.itfjnu.codekit.code.dto.*;
 import org.itfjnu.codekit.code.model.CodeDependency;
 import org.itfjnu.codekit.code.model.CodeSnippet;
 import org.itfjnu.codekit.code.model.VersionInfo;
@@ -108,5 +108,27 @@ public class CodeSnippetController {
     @GetMapping("/{id}/versions")
     public ApiResponse<List<VersionInfo>> listVersions(@PathVariable Long id) {
         return ApiResponse.success(versionInfoService.listVersions(id));
+    }
+
+    @Operation(summary = "版本回滚", description = "将代码片段回滚到指定版本（自动备份当前内容）")
+    @PostMapping("/{snippetId}/rollback/{versionId}")
+    public ApiResponse<VersionRollbackResponse> rollbackVersion(@PathVariable Long snippetId,
+                                                                @PathVariable Long versionId) {
+        return ApiResponse.success(versionInfoService.rollbackToVersion(snippetId, versionId));
+    }
+
+    @Operation(summary = "版本差异分析", description = "对比两个版本并返回结构化差异")
+    @GetMapping("/{snippetId}/versions/{fromVersionId}/diff/{toVersionId}")
+    public ApiResponse<VersionDiffResponse> compareVersions(@PathVariable Long snippetId,
+                                                            @PathVariable Long fromVersionId,
+                                                            @PathVariable Long toVersionId) {
+        return ApiResponse.success(versionInfoService.compareVersions(snippetId, fromVersionId, toVersionId));
+    }
+
+    @Operation(summary = "AI 辅助版本分析", description = "调用 AI 对两个版本变更进行风险与建议分析")
+    @PostMapping("/{snippetId}/versions/analyze")
+    public ApiResponse<VersionAnalyzeResponse> analyzeVersions(@PathVariable Long snippetId,
+                                                               @RequestBody VersionAnalyzeRequest request) {
+        return ApiResponse.success(versionInfoService.analyzeVersions(snippetId, request));
     }
 }
