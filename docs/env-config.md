@@ -42,7 +42,59 @@
 3. 启动开发服务器：`npm run dev`
 
 ---
+---
 
-## 4. 常见问题 (FAQ)
+## 4. API Key 安全配置
+
+### 4.1 环境变量注入（推荐）
+CodeKit 支持通过环境变量注入所有敏感配置，**切勿将 API Key 直接写在配置文件中**。
+
+| 环境变量 | 说明 |
+|---|---|
+| `CODEKIT_AI_API_KEY` | AI 大模型 API Key（豆包/通义千问/ChatGPT 等） |
+| `CODEKIT_AI_EMBEDDING_API_KEY` | Embedding 向量化 API Key（为空时自动复用上面的主 Key） |
+| `CODEKIT_AI_PROVIDER` | 提供商代码：doubao / qwen / openai / deepseek / wenxin |
+| `CODEKIT_AI_MODEL` | 模型名称 |
+| `CODEKIT_VAULT_PASSWORD` | 加密保险库主密码（用于加密本地存储的 API Key，可选） |
+
+**设置方式：**
+
+macOS / Linux:
+```bash
+export CODEKIT_AI_API_KEY="your-api-key-here"
+export CODEKIT_AI_PROVIDER="doubao"
+./mvnw spring-boot:run
+```
+
+Windows (PowerShell):
+```powershell
+$env:CODEKIT_AI_API_KEY="your-api-key-here"
+$env:CODEKIT_AI_PROVIDER="doubao"
+mvnw spring-boot:run
+```
+
+### 4.2 前端 Settings 页面持久化
+API Key 通过前端 Settings 页面保存后：
+- 使用 **AES-256-GCM** 加密存储在 `data/ai-settings.json`
+- 密钥派生使用 PBKDF2WithHmacSHA256（10,000 次迭代）
+- 返回前端时自动脱敏显示（如 `97ab****c7`）
+- 支持按不同 AI 提供商分别保存独立的 API Key
+
+### 4.3 加密保险库
+`data/ai-settings.json` 中的 API Key 已加密。加密主密码优先级：
+1. **环境变量 `CODEKIT_VAULT_PASSWORD`**（推荐设置）
+2. 自动派生密钥（基于本机 hostname，更换机器后需重新输入 API Key）
+
+### 4.4 安全检查清单
+- [ ] API Key 不直接写入 `application-local.yml`
+- [ ] `application-local.yml` 已加入 `.gitignore`
+- [ ] 生产环境使用环境变量注入密钥
+- [ ] 设置了 `CODEKIT_VAULT_PASSWORD` 以加固本地加密
+
+---
+
+## 5. 常见问题 (FAQ)
 - **虚拟线程不生效？** 确保 `application.yml` 中 `spring.threads.virtual.enabled` 为 `true`。
 - **MySQL 连接超时？** 检查数据库服务是否已启动，且 `allowPublicKeyRetrieval=true` 参数已在 JDBC URL 中配置。
+- **API Key 在哪里设置？** 推荐通过环境变量 `CODEKIT_AI_API_KEY` 注入，或通过前端 Settings → AI 设置页面输入。
+- **换了电脑/机器后 API Key 丢失？** 如果未设置 `CODEKIT_VAULT_PASSWORD`，加密密钥与机器 hostname 绑定。换机器后需要重新输入 API Key。

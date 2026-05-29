@@ -39,8 +39,21 @@ public class RuleBasedAgentPlannerImpl implements AgentPlanner {
         boolean needVersion = containsAny(lower, "版本", "历史", "version");
         boolean needOptimize = containsAny(lower, "优化", "重构", "improve", "optimize");
         boolean needCompare = containsAny(lower, "对比", "差异", "diff", "compare");
+        boolean needRag = containsAny(lower, "语义检索", "rag", "向量检索", "语义召回", "知识检索");
 
-        if (needSearch) {
+        if (needRag) {
+            Map<String, Object> params = new HashMap<>();
+            params.put("query", extractSearchKeyword(text));
+            params.put("topK", 5);
+            params.put("minScore", 0.0);
+            params.put("includeCode", true);
+
+            tasks.add(AgentTask.builder()
+                    .taskName("RAG 语义检索")
+                    .skillName("rag_retrieve")
+                    .params(params)
+                    .build());
+        } else if (needSearch) {
             Map<String, Object> params = new HashMap<>();
             String keyword = extractSearchKeyword(text);
             params.put("keyword", keyword);

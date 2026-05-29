@@ -17,6 +17,7 @@ import org.itfjnu.codekit.search.service.SearchService;
 import org.itfjnu.codekit.search.service.VectorIndexService;
 import org.itfjnu.codekit.search.service.support.SearchQueryExecutor;
 import org.itfjnu.codekit.search.service.support.SearchResponseAssembler;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -38,7 +39,8 @@ import java.util.stream.Collectors;
 public class SearchServiceImpl implements SearchService {
 
     private final SearchHistoryRepository searchHistoryRepository;
-    private final RedisCacheService redisCacheService;
+    @Autowired(required = false)
+    private RedisCacheService redisCacheService;
     private final ObjectMapper objectMapper;
     private final SearchQueryExecutor searchQueryExecutor;
     private final SearchResponseAssembler searchResponseAssembler;
@@ -109,6 +111,7 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private List<SearchResponse> readCachedResponses(String cacheKey) {
+        if (redisCacheService == null) return null;
         try {
             Object cachedResult = redisCacheService.get(cacheKey);
             if (cachedResult == null) {
@@ -122,6 +125,7 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private void cacheResponses(String cacheKey, List<SearchResponse> responses) {
+        if (redisCacheService == null) return;
         try {
             String json = objectMapper.writeValueAsString(responses);
             redisCacheService.set(cacheKey, json, 10, TimeUnit.MINUTES);
@@ -229,7 +233,7 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public List<String> getHotKeywords() {
         String cacheKey = "hot:keywords";
-        String cachedResult = redisCacheService.get(cacheKey);
+        String cachedResult = redisCacheService != null ? redisCacheService.get(cacheKey) : null;
         
         if (cachedResult != null) {
             try {
@@ -255,11 +259,13 @@ public class SearchServiceImpl implements SearchService {
             hotKeywords = List.of("Redis", "分页", "连接池", "配置", "工具类");
         }
         
-        try {
-            String json = objectMapper.writeValueAsString(hotKeywords);
-            redisCacheService.set(cacheKey, json, 30, TimeUnit.MINUTES);
-        } catch (Exception e) {
-            log.warn("热门关键词缓存写入失败: {}", e.getMessage());
+        if (redisCacheService != null) {
+            try {
+                String json = objectMapper.writeValueAsString(hotKeywords);
+                redisCacheService.set(cacheKey, json, 30, TimeUnit.MINUTES);
+            } catch (Exception e) {
+                log.warn("热门关键词缓存写入失败: {}", e.getMessage());
+            }
         }
         
         return hotKeywords;

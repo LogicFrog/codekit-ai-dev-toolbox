@@ -187,3 +187,25 @@ export interface AIMessage {
   content: string
   time?: string
 }
+
+export interface AISettings {
+  temperature: number
+  provider: string
+  model: string
+  apiKey: string
+  baseUrl: string
+  editorTheme: string
+  fontSize: number
+  autoSave: boolean
+  pageSize: number
+  maxContextTokens: number
+  contextWindowRounds: number
+  embeddingApiKey: string
+}
+
+export interface ProviderInfo {
+  code: string
+  displayName: string
+  defaultBaseUrl: string
+  defaultModels: string[]
+}

@@ -330,39 +330,27 @@ import {
   setAiTemperature
 } from '@/api/ai'
 import { getCodeSnippet } from '@/api/code'
+import { storeToRefs } from 'pinia'
+import { useAIChatStore } from '@/stores/aiChat'
 import type { AgentExecuteResponse } from '@/api/ai'
-import type { AIChatRequest, AIChatResponse, AIMessage } from '@/types'
+import type { AIChatRequest, AIMessage } from '@/types'
 import { copyToClipboard, extractErrorMessage, formatRelativeTime, getLanguageColor } from '@/utils/helpers'
 
-// 表单数据
+const store = useAIChatStore()
+const { mode, loading, response, agentResponse, hasResponse, errorMessage, conversation, temperature, temperatureSaving, sessionId } = storeToRefs(store)
+const { handleAgentResponse: setAgentResponse, resetChat, newChat } = store
+
 const form = reactive<AIChatRequest>({
   question: '',
   code: '',
   languageType: ''
 })
 
-// 模式：chat 对话 / explain 代码解释 / agent 编排
-const mode = ref<'chat' | 'explain' | 'agent'>('chat')
-
-// 加载状态
-const loading = ref(false)
-
-// 响应数据
-const response = ref<AIChatResponse | null>(null)
-const agentResponse = ref<AgentExecuteResponse | null>(null)
-const hasResponse = ref(false)
-const errorMessage = ref('')
-const conversation = ref<AIMessage[]>([])
-const temperature = ref(1.0)
-const temperatureSaving = ref(false)
 const showDetailDrawer = ref(false)
 const selectedSearchItem = ref<AgentSearchItem | null>(null)
 const fullCodeContent = ref('')
 const loadingFullCode = ref(false)
 const copying = ref(false)
-
-const SESSION_STORAGE_KEY = 'codekit-ai-session-id'
-const sessionId = ref<string | undefined>(undefined)
 
 interface AgentSearchItem {
   id?: number

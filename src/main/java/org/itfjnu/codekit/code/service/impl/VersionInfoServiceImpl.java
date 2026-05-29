@@ -1,10 +1,14 @@
 package org.itfjnu.codekit.code.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.itfjnu.codekit.ai.dto.AIChatRequest;
 import org.itfjnu.codekit.ai.dto.AIChatResponse;
+import org.itfjnu.codekit.ai.prompt.PromptTemplateType;
+import org.itfjnu.codekit.ai.prompt.service.PromptTemplateService;
 import org.itfjnu.codekit.ai.service.AIService;
 import org.itfjnu.codekit.code.dto.*;
+import org.itfjnu.codekit.code.service.GitService;
 import org.itfjnu.codekit.code.model.CodeSnippet;
 import org.itfjnu.codekit.code.model.VersionInfo;
 import org.itfjnu.codekit.code.repository.CodeSnippetRepository;
@@ -26,7 +30,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(rollbackFor = Exception.class)
@@ -37,6 +43,8 @@ public class VersionInfoServiceImpl implements VersionInfoService {
     private final CodeSnippetRepository codeSnippetRepository;
     private final VectorIndexService vectorIndexService;
     private final AIService aiService;
+    private final PromptTemplateService promptTemplateService;
+    private final GitService gitService;
 
     @Override
     public VersionInfo createVersion(Long snippetId, CreateVersionRequest request) {
@@ -120,9 +128,13 @@ public class VersionInfoServiceImpl implements VersionInfoService {
         VersionInfo to = getVersionBySnippetOrThrow(snippetId, toVersionId);
 
         try {
+            VersionDiffResponse jgitResult = buildDiffViaJGit(snippetId, from, to);
+            if (jgitResult != null) {
+                return jgitResult;
+            }
             return buildDiff(snippetId, from, to);
         } catch (Exception e) {
-            throw new ServiceException(ErrorCode.VERSION_COMPARE_FAILED, "版本差异分析失败：" + e.getMessage(), e);
+            return buildDiff(snippetId, from, to);
         }
     }
 
@@ -163,6 +175,87 @@ public class VersionInfoServiceImpl implements VersionInfoService {
     private VersionInfo getVersionBySnippetOrThrow(Long snippetId, Long versionId) {
         return versionInfoRepository.findByIdAndSnippetId(versionId, snippetId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.VERSION_NOT_FOUND, "版本不存在，ID: " + versionId));
+    }
+
+    private VersionDiffResponse buildDiffViaJGit(Long snippetId, VersionInfo from, VersionInfo to) {
+        try {
+            String oldText = from.getCodeContent() == null ? "" : from.getCodeContent();
+            String newText = to.getCodeContent() == null ? "" : to.getCodeContent();
+
+            org.eclipse.jgit.diff.RawText oldRaw = new org.eclipse.jgit.diff.RawText(oldText.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            org.eclipse.jgit.diff.RawText newRaw = new org.eclipse.jgit.diff.RawText(newText.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            org.eclipse.jgit.diff.EditList edits = org.eclipse.jgit.diff.DiffAlgorithm.getAlgorithm(
+                    org.eclipse.jgit.diff.DiffAlgorithm.SupportedAlgorithm.HISTOGRAM)
+                    .diff(org.eclipse.jgit.diff.RawTextComparator.DEFAULT, oldRaw, newRaw);
+
+            int added = 0;
+            int removed = 0;
+            int modified = 0;
+            List<VersionChangeBlock> blocks = new ArrayList<>();
+
+            for (org.eclipse.jgit.diff.Edit edit : edits) {
+                VersionChangeBlock block = new VersionChangeBlock();
+                block.setOldStartLine(edit.getBeginA() + 1);
+                block.setOldEndLine(edit.getEndA());
+                block.setNewStartLine(edit.getBeginB() + 1);
+                block.setNewEndLine(edit.getEndB());
+
+                switch (edit.getType()) {
+                    case INSERT -> {
+                        block.setType("ADD");
+                        block.setOldSnippet("");
+                        block.setNewSnippet(extractLines(newText, edit.getBeginB(), edit.getEndB()));
+                        added += edit.getLengthB();
+                    }
+                    case DELETE -> {
+                        block.setType("REMOVE");
+                        block.setOldSnippet(extractLines(oldText, edit.getBeginA(), edit.getEndA()));
+                        block.setNewSnippet("");
+                        removed += edit.getLengthA();
+                    }
+                    case REPLACE -> {
+                        block.setType("MODIFY");
+                        block.setOldSnippet(extractLines(oldText, edit.getBeginA(), edit.getEndA()));
+                        block.setNewSnippet(extractLines(newText, edit.getBeginB(), edit.getEndB()));
+                        modified++;
+                    }
+                    case EMPTY -> {}
+                }
+                blocks.add(block);
+            }
+
+            int totalBase = Math.max(countLines(oldText), 1);
+            double rate = ((double) (added + removed + modified)) / totalBase;
+
+            VersionDiffResponse resp = new VersionDiffResponse();
+            resp.setSnippetId(snippetId);
+            resp.setFromVersionId(from.getId());
+            resp.setToVersionId(to.getId());
+            resp.setAddedLines(added);
+            resp.setRemovedLines(removed);
+            resp.setModifiedBlocks(modified);
+            resp.setChangeRate(Math.round(rate * 10000d) / 10000d);
+            resp.setSummary(String.format("新增 %d 行，删除 %d 行，修改 %d 处 [JGit Histogram]", added, removed, modified));
+            resp.setBlocks(blocks);
+            return resp;
+        } catch (Exception e) {
+            log.debug("JGit diff 不可用，回退至 LCS: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String extractLines(String text, int begin, int end) {
+        String[] lines = text.split("\n", -1);
+        StringBuilder sb = new StringBuilder();
+        for (int i = begin; i < end && i < lines.length; i++) {
+            sb.append(lines[i]).append('\n');
+        }
+        return sb.toString();
+    }
+
+    private int countLines(String text) {
+        return text.isEmpty() ? 0 : text.split("\n", -1).length;
     }
 
     private VersionDiffResponse buildDiff(Long snippetId, VersionInfo from, VersionInfo to) {
@@ -246,15 +339,10 @@ public class VersionInfoServiceImpl implements VersionInfoService {
 
     private String buildVersionAnalyzePrompt(org.itfjnu.codekit.code.dto.VersionDiffResponse diff, String focus) {
         String finalFocus = (focus == null || focus.isBlank()) ? "通用质量、潜在风险、测试建议" : focus;
-        return "你是资深代码评审工程师。请基于两个版本差异进行分析。\n"
-                + "要求：\n"
-                + "1) 用中文输出；\n"
-                + "2) 先给总体结论；\n"
-                + "3) 列出主要风险点；\n"
-                + "4) 给出可执行改进建议；\n"
-                + "5) 给出测试关注点。\n\n"
-                + "差异统计：" + diff.getSummary() + "\n"
-                + "关注重点：" + finalFocus;
+        Map<String, Object> vars = new java.util.HashMap<>();
+        vars.put("diffSummary", diff.getSummary());
+        vars.put("focus", finalFocus);
+        return promptTemplateService.render(PromptTemplateType.VERSION_ANALYZE, vars);
     }
 
     private String guessRiskLevel(String answer) {

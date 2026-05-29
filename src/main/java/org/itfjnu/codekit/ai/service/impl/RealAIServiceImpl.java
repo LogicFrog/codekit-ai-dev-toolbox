@@ -6,11 +6,15 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.itfjnu.codekit.ai.config.AIProperties;
+import org.itfjnu.codekit.ai.config.LLMProvider;
+import org.itfjnu.codekit.utils.TokenEstimator;
 import org.itfjnu.codekit.ai.dto.AIChatRequest;
 import org.itfjnu.codekit.ai.dto.AIChatResponse;
 import org.itfjnu.codekit.ai.dto.DoubaoRequest;
 import org.itfjnu.codekit.ai.dto.DoubaoResponse;
-import org.itfjnu.codekit.ai.model.ChatMessage;
+import org.itfjnu.codekit.ai.dto.ChatMessage;
+import org.itfjnu.codekit.ai.prompt.PromptTemplateType;
+import org.itfjnu.codekit.ai.prompt.service.PromptTemplateService;
 import org.itfjnu.codekit.ai.service.AIService;
 import org.itfjnu.codekit.ai.service.SessionHistoryService;
 import org.itfjnu.codekit.common.exception.BusinessException;
@@ -36,10 +40,10 @@ import java.util.function.Consumer;
 import static org.itfjnu.codekit.common.dto.ErrorCode.*;
 
 /**
- * 真实 AI 服务实现 - 豆包版本
- * 
- * 使用火山方舟 API 调用豆包大模型
- * API 文档：https://www.volcengine.com/docs/82379/1099475
+ * AI 服务实现 - 支持多 LLM 提供商
+ * <p>
+ * 所有主流 LLM 提供商（豆包/通义千问/ChatGPT/DeepSeek/文心一言）均支持
+ * OpenAI 兼容的 API 格式，通过动态切换 baseUrl 和 apiKey 实现提供商切换。
  */
 @Slf4j
 @Service
@@ -49,32 +53,42 @@ public class RealAIServiceImpl implements AIService {
     private final AIProperties aiProperties;
     private final ObjectMapper objectMapper;
     private final SessionHistoryService sessionHistoryService;
+    private final PromptTemplateService promptTemplateService;
 
-    // 定义关键词
     private static final List<String> SUGGESTION_KEYWORDS = List.of(
             "建议", "改进", "优化", "注意", "可以"
     );
-    private static final int CHAT_HISTORY_ROUNDS = 4;
+    private static final int DEFAULT_CONTEXT_TOKEN_BUDGET = 4096;
 
-    private RestClient restClient;
+    private volatile RestClient restClient;
 
     @PostConstruct
     public void init() {
-        log.info("=== 豆包 AI 配置信息 ===");
+        LLMProvider provider = LLMProvider.fromCode(aiProperties.getProvider());
+        log.info("=== AI 服务初始化 ===");
+        log.info("提供商: {} ({})", provider.getDisplayName(), provider.getCode());
         log.info("API 地址: {}", aiProperties.getBaseUrl());
-        log.info("接入点 ID: {}", aiProperties.getModel());
+        log.info("模型: {}", aiProperties.getModel());
         log.info("超时时间: {} ms", aiProperties.getTimeout());
         log.info("最大 Tokens: {}", aiProperties.getMaxTokens());
         log.info("温度参数: {}", aiProperties.getTemperature());
-        log.info("配置状态: {}", aiProperties.isConfigured() ? "✅ 已配置" : "❌ 未配置");
+        log.info("配置状态: {}", aiProperties.isConfigured() ? "已配置" : "未配置");
 
-        if (!aiProperties.isConfigured()) {
-            log.warn("豆包 AI 未配置，请检查 application-local.yml 中的 ai.api-key 和 ai.model");
-        }
+        buildRestClient();
+    }
 
-        restClient = RestClient.builder()
+    public void reconfigure() {
+        LLMProvider provider = LLMProvider.fromCode(aiProperties.getProvider());
+        log.info("=== AI 服务重新配置 ===");
+        log.info("提供商: {} ({})", provider.getDisplayName(), provider.getCode());
+        log.info("API 地址: {}", aiProperties.getBaseUrl());
+        log.info("模型: {}", aiProperties.getModel());
+        buildRestClient();
+    }
+
+    private void buildRestClient() {
+        this.restClient = RestClient.builder()
                 .baseUrl(aiProperties.getBaseUrl())
-                .defaultHeader("Authorization", "Bearer " + aiProperties.getApiKey())
                 .defaultHeader("Content-Type", "application/json")
                 .defaultHeader("Accept", "application/json")
                 .requestFactory(new SimpleClientHttpRequestFactory() {{
@@ -89,19 +103,27 @@ public class RealAIServiceImpl implements AIService {
         log.info("开始处理 chat 请求，问题: {}", truncate(request.getQuestion(), 50));
 
         if (!aiProperties.isConfigured()) {
-            log.warn("豆包 AI 未配置");
-            throw new ServiceException(CONFIG_ERROR, "豆包 AI 未配置。请在 application-local.yml 中设置 ai.api-key 和 ai.model");
+            log.warn("AI 服务未配置 API Key");
+            throw new ServiceException(CONFIG_ERROR, "AI 未配置。请在设置页面中配置 API Key 和模型");
         }
 
         String sessionId = resolveSessionId(request.getSessionId());
         String currentQuestion = request.getQuestion() == null ? "" : request.getQuestion();
-        List<ChatMessage> history = sessionHistoryService.getRecentMessages(sessionId, CHAT_HISTORY_ROUNDS);
+
+        int contextBudget = aiProperties.getMaxTokens() > 0 ? aiProperties.getMaxTokens() / 2 : DEFAULT_CONTEXT_TOKEN_BUDGET;
+        List<ChatMessage> history = sessionHistoryService.getRecentMessagesByTokenBudget(sessionId, contextBudget);
+
         String prompt = buildChatPromptWithHistory(request, history);
-        String answer = callDoubaoAPI(prompt);
+        String answer = callLLMAPI(prompt);
+
+        int promptTokens = TokenEstimator.estimateTokens(prompt);
+        int completionTokens = TokenEstimator.estimateTokens(answer);
+        log.info("chat 请求完成 — Token: {}",
+                TokenEstimator.formatTokenUsage(promptTokens, completionTokens, aiProperties.getMaxTokens()));
+
         sessionHistoryService.appendUserMessage(sessionId, currentQuestion);
         sessionHistoryService.appendAssistantMessage(sessionId, answer);
 
-        log.info("chat 请求处理成功");
         return AIChatResponse.builder()
                 .answer(answer)
                 .sessionId(sessionId)
@@ -111,11 +133,12 @@ public class RealAIServiceImpl implements AIService {
     @Override
     public SseEmitter chatStream(AIChatRequest request) {
         if (!aiProperties.isConfigured()) {
-            throw new ServiceException(CONFIG_ERROR, "豆包 AI 未配置。请在 application-local.yml 中设置 ai.api-key 和 ai.model");
+            throw new ServiceException(CONFIG_ERROR, "AI 未配置。请在设置页面中配置 API Key 和模型");
         }
 
         String sessionId = resolveSessionId(request.getSessionId());
-        List<ChatMessage> history = sessionHistoryService.getRecentMessages(sessionId, CHAT_HISTORY_ROUNDS);
+        int contextBudget = aiProperties.getMaxTokens() > 0 ? aiProperties.getMaxTokens() / 2 : DEFAULT_CONTEXT_TOKEN_BUDGET;
+        List<ChatMessage> history = sessionHistoryService.getRecentMessagesByTokenBudget(sessionId, contextBudget);
         String prompt = buildChatPromptWithHistory(request, history);
 
         SseEmitter emitter = new SseEmitter((long) aiProperties.getTimeout() + 30000L);
@@ -124,7 +147,7 @@ public class RealAIServiceImpl implements AIService {
             StringBuilder fullAnswer = new StringBuilder();
             try {
                 log.info("开始流式 chat，请求 sessionId={}", sessionId);
-                callDoubaoAPIStream(prompt, chunk -> {
+                callLLMAPIStream(prompt, chunk -> {
                     fullAnswer.append(chunk);
                     sendStreamEvent(emitter, "chunk", Map.of(
                             "content", chunk,
@@ -139,7 +162,8 @@ public class RealAIServiceImpl implements AIService {
                         "sessionId", sessionId,
                         "answer", fullAnswer.toString()
                 ));
-                log.info("流式 chat 完成，sessionId={}, answerLength={}", sessionId, fullAnswer.length());
+                log.info("流式 chat 完成，sessionId={}, answerLength={}, promptTokens={}",
+                        sessionId, fullAnswer.length(), TokenEstimator.estimateTokens(prompt));
                 emitter.complete();
             } catch (Exception e) {
                 log.error("流式 chat 处理失败: {}", e.getMessage(), e);
@@ -163,11 +187,11 @@ public class RealAIServiceImpl implements AIService {
 
         if (!aiProperties.isConfigured()) {
             log.warn("API Key 未配置");
-            throw new ServiceException(CONFIG_ERROR, "API Key 未配置。请在 application-local.yml 中设置 ai.api-key");
+            throw new ServiceException(CONFIG_ERROR, "API Key 未配置。请在设置页面中配置 API Key 和模型");
         }
 
         String prompt = buildExplainPrompt(request);
-        String answer = callDoubaoAPI(prompt);
+        String answer = callLLMAPI(prompt);
 
         List<String> suggestions = extractSuggestions(answer);
 
@@ -180,16 +204,13 @@ public class RealAIServiceImpl implements AIService {
 
     @Override
     public String getProviderName() {
-        return "real";
+        return LLMProvider.fromCode(aiProperties.getProvider()).getDisplayName();
     }
 
     /**
-     * 调用豆包 API
-     * 
-     * @param prompt 提示词
-     * @return AI 的回复内容
+     * 调用 LLM API（OpenAI 兼容格式）
      */
-    private String callDoubaoAPI(String prompt) {
+    private String callLLMAPI(String prompt) {
         try {
             DoubaoRequest doubaoRequest = DoubaoRequest.ofUser(
                     aiProperties.getModel(),
@@ -198,32 +219,41 @@ public class RealAIServiceImpl implements AIService {
             );
             doubaoRequest.setTemperature(aiProperties.getTemperature());
 
-            log.debug("发送请求到豆包 API: {}", objectMapper.writeValueAsString(doubaoRequest));
+            log.debug("发送请求到LLM API: {}", objectMapper.writeValueAsString(doubaoRequest));
+
+            String currentKey = aiProperties.getApiKey();
+            log.info(">>> LLM请求 - Key是否为空: {}, Key长度: {}, Key前缀: {}",
+                    currentKey == null || currentKey.isEmpty(),
+                    currentKey == null ? 0 : currentKey.length(),
+                    (currentKey != null && currentKey.length() >= 8) ? currentKey.substring(0, 8) : "(空)");
 
             String responseBody = restClient.post()
                     .uri("/chat/completions")
+                    .header("Authorization", "Bearer " + currentKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(doubaoRequest)
                     .exchange((request, response) -> {
-                        log.info("豆包响应状态码: {}", response.getStatusCode());
-                        log.info("豆包响应 Content-Type: {}", response.getHeaders().getContentType());
+                        int statusCode = response.getStatusCode().value();
+                        log.info("LLM响应状态码: {}", statusCode);
 
                         try (InputStream inputStream = response.getBody()) {
                             if (inputStream == null) {
-                                throw new BusinessException(AI_EMPTY_RESPONSE);
+                                log.error("LLM API 返回空 body，状态码: {}", statusCode);
+                                throw new BusinessException(AI_EMPTY_RESPONSE, "状态码: " + statusCode);
                             }
 
                             byte[] responseBytes = inputStream.readAllBytes();
                             if (responseBytes.length == 0) {
-                                throw new BusinessException(AI_EMPTY_RESPONSE);
+                                log.error("LLM API 返回空内容，状态码: {}", statusCode);
+                                throw new BusinessException(AI_EMPTY_RESPONSE, "状态码: " + statusCode + "，响应为空");
                             }
 
                             String body = new String(responseBytes, StandardCharsets.UTF_8);
-                            log.debug("豆包 API 原始响应: {}", body);
+                            log.debug("LLM API 原始响应: {}", body);
 
                             return body;
                         } catch (IOException e) {
-                            throw new BusinessException(AI_RESPONSE_READ_FAILED, "读取豆包 API 响应失败: " + e.getMessage(), e);
+                            throw new BusinessException(AI_RESPONSE_READ_FAILED, "读取LLM API 响应失败: " + e.getMessage(), e);
                         }
                     });
 
@@ -231,11 +261,11 @@ public class RealAIServiceImpl implements AIService {
             DoubaoResponse response = objectMapper.readValue(responseBody, DoubaoResponse.class);
             
             if (response.getContent() == null || response.getContent().isBlank()) {
-                log.error("豆包 API 返回空内容");
+                log.error("LLM API 返回空内容");
                 throw new BusinessException(AI_EMPTY_RESPONSE, responseBody);
             }
 
-            log.info("豆包 API 调用成功，Token 使用: {}", 
+            log.info("LLM API 调用成功，Token 使用: {}", 
                     response.getUsage() != null ? response.getUsage().getTotalTokens() : "未知");
             
             return response.getContent();
@@ -246,12 +276,12 @@ public class RealAIServiceImpl implements AIService {
             log.error("HTTP 请求失败: {}", e.getMessage(), e);
             throw new BusinessException(AI_REQUEST_FAILED, e.getMessage());
         } catch (Exception e) {
-            log.error("处理豆包 API 响应失败: {}", e.getMessage(), e);
+            log.error("处理LLM API 响应失败: {}", e.getMessage(), e);
             throw new BusinessException(AI_RESPONSE_PARSE_FAILED, e.getMessage(), e);
         }
     }
 
-    private void callDoubaoAPIStream(String prompt, Consumer<String> chunkConsumer) {
+    private void callLLMAPIStream(String prompt, Consumer<String> chunkConsumer) {
         try {
             DoubaoRequest streamRequest = DoubaoRequest.ofUser(
                     aiProperties.getModel(),
@@ -263,11 +293,12 @@ public class RealAIServiceImpl implements AIService {
 
             restClient.post()
                     .uri("/chat/completions")
+                    .header("Authorization", "Bearer " + aiProperties.getApiKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.TEXT_EVENT_STREAM)
                     .body(streamRequest)
                     .exchange((req, res) -> {
-                        log.info("豆包流式响应状态码: {}", res.getStatusCode());
+                        log.info("LLM流式响应状态码: {}", res.getStatusCode());
                         if (res.getStatusCode().isError()) {
                             throw new BusinessException(AI_REQUEST_FAILED, "流式请求失败，状态码: " + res.getStatusCode());
                         }
@@ -323,7 +354,8 @@ public class RealAIServiceImpl implements AIService {
     private String buildChatPromptWithHistory(AIChatRequest request, List<ChatMessage> history) {
         StringBuilder prompt = new StringBuilder();
 
-        prompt.append("你是 CodeKit 的 AI 助手。请面向开发者，给出准确、可执行的回答。\n\n");
+        prompt.append(promptTemplateService.render(PromptTemplateType.CHAT_SYSTEM, null));
+        prompt.append("\n\n");
 
         if (history != null && !history.isEmpty()) {
             prompt.append("以下是最近对话上下文（按时间顺序）：\n");
@@ -360,27 +392,23 @@ public class RealAIServiceImpl implements AIService {
      * 构建 explain 提示词
      */
     private String buildExplainPrompt(AIChatRequest request) {
-        StringBuilder prompt = new StringBuilder();
-        
-        prompt.append("请详细解释以下");
-        if (request.getLanguageType() != null && !request.getLanguageType().isEmpty()) {
-            prompt.append(request.getLanguageType()).append(" ");
-        }
-        prompt.append("代码：\n\n");
-        
-        if (request.getCode() != null && !request.getCode().isEmpty()) {
-            prompt.append("```\n")
-                  .append(request.getCode())
-                  .append("\n```\n\n");
-        }
-        
-        prompt.append("请从以下几个方面进行解释：\n");
-        prompt.append("1. 代码的主要功能和目的\n");
-        prompt.append("2. 关键逻辑和算法\n");
-        prompt.append("3. 重要的类、方法和变量\n");
-        prompt.append("4. 可能的改进建议（如果有）");
-        
-        return prompt.toString();
+        Map<String, Object> vars = new java.util.HashMap<>();
+        vars.put("languageType", request.getLanguageType() != null ? request.getLanguageType() : "");
+        vars.put("code", request.getCode() != null ? request.getCode() : "");
+        return promptTemplateService.render(PromptTemplateType.CODE_EXPLAIN, vars);
+    }
+
+    private String buildOptimizePrompt(AIChatRequest request, String optimizeType) {
+        PromptTemplateType type = switch (optimizeType) {
+            case "performance" -> PromptTemplateType.CODE_OPTIMIZE_PERFORMANCE;
+            case "readability" -> PromptTemplateType.CODE_OPTIMIZE_READABILITY;
+            case "bugfix" -> PromptTemplateType.CODE_OPTIMIZE_BUGFIX;
+            default -> PromptTemplateType.CODE_OPTIMIZE_ALL;
+        };
+        Map<String, Object> vars = new java.util.HashMap<>();
+        vars.put("languageType", request.getLanguageType() != null ? request.getLanguageType() : "Java");
+        vars.put("code", request.getCode() != null ? request.getCode() : "");
+        return promptTemplateService.render(type, vars);
     }
 
     /**
@@ -426,11 +454,36 @@ public class RealAIServiceImpl implements AIService {
 
     @Override
     public AIChatResponse optimize(AIChatRequest request) {
-        String originalQuestion = request.getQuestion();
-        if (originalQuestion == null || originalQuestion.isEmpty()) {
-            request.setQuestion("请优化这段代码，提升性能、可读性和安全性，并给出具体的优化建议");
+        log.info("开始处理 optimize 请求，代码语言: {}", request.getLanguageType());
+
+        if (!aiProperties.isConfigured()) {
+            log.warn("API Key 未配置");
+            throw new ServiceException(CONFIG_ERROR, "API Key 未配置。请在设置页面中配置 API Key 和模型");
         }
-        return explain(request);
+
+        String optimizeType = "all";
+        String question = request.getQuestion();
+        if (question != null) {
+            String lower = question.toLowerCase();
+            if (lower.contains("性能") || lower.contains("performance")) {
+                optimizeType = "performance";
+            } else if (lower.contains("可读性") || lower.contains("readability")) {
+                optimizeType = "readability";
+            } else if (lower.contains("bug") || lower.contains("修复")) {
+                optimizeType = "bugfix";
+            }
+        }
+
+        String prompt = buildOptimizePrompt(request, optimizeType);
+        String answer = callLLMAPI(prompt);
+
+        List<String> suggestions = extractSuggestions(answer);
+
+        log.info("optimize 请求处理成功，优化类型: {}", optimizeType);
+        return AIChatResponse.builder()
+                .answer(answer)
+                .suggestions(suggestions)
+                .build();
     }
 
     /**

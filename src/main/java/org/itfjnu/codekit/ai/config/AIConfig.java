@@ -23,6 +23,9 @@ public class AIConfig {
 
     /**
      * 根据 provider 配置选择 AI 服务实现
+     * <p>
+     * 支持 doubao / qwen / openai / deepseek / wenxin / real(向后兼容=豆包)
+     * mock 模式用于开发调试
      *
      * @param mockService 模拟服务实例
      * @param realService 真实服务实例
@@ -34,14 +37,18 @@ public class AIConfig {
 
         log.info("AI Provider 配置：{}", provider);
 
-        // 忽略大小写比较，支持 "real"、"Real"、"REAL" 等多种写法
-        if ("real".equalsIgnoreCase(provider)) {
-            log.info("使用 RealAIServiceImpl（真实 AI 服务）");
-            log.info("API Key 配置状态：{}", aiProperties.isConfigured() ? "✅ 已配置" : "❌ 未配置");
-            return realService;
+        if ("mock".equalsIgnoreCase(provider)) {
+            log.info("使用 MockAIServiceImpl（模拟 AI 服务）");
+            return mockService;
         }
 
-        log.info("使用 MockAIServiceImpl（模拟 AI 服务）");
-        return mockService;
+        LLMProvider llmProvider = LLMProvider.fromCode(provider);
+        log.info("使用 RealAIServiceImpl → {} ({})", llmProvider.getDisplayName(), llmProvider.getCode());
+
+        if (!aiProperties.isConfigured()) {
+            log.warn("API Key 未配置，可在设置页面中配置");
+        }
+
+        return realService;
     }
 }

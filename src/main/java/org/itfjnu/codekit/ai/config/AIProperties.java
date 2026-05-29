@@ -49,6 +49,31 @@ public class AIProperties {
     private Double temperature = 1.0;
 
     /**
+     * Maximum context tokens for chat history
+     */
+    private int maxContextTokens = 4096;
+
+    /**
+     * Maximum context window rounds
+     */
+    private int maxContextRounds = 4;
+
+    /**
+     * Embedding API endpoint
+     */
+    private String embeddingApi = "";
+
+    /**
+     * Embedding model name
+     */
+    private String embeddingModel = "";
+
+    /**
+     * Embedding API key（为空时复用主 API Key）
+     */
+    private String embeddingApiKey = "";
+
+    /**
      * Check if the configuration is valid
      */
     public boolean isConfigured() {

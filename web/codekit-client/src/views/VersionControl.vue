@@ -126,7 +126,8 @@
             :modified-content="modifiedVersion.codeContent"
             :original-language="detectLanguage(originalVersion)"
             :modified-language="detectLanguage(modifiedVersion)"
-            theme="vs-light"
+            :theme="editorTheme"
+            :fontSize="editorFontSize"
             :render-side-by-side="renderSideBySide"
           />
         </div>
@@ -199,115 +200,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { watch, onMounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { RefreshRight, Switch, Plus } from '@element-plus/icons-vue'
-import { listVersions, createVersion, rollbackVersion, compareVersionsApi, analyzeVersionsApi } from '@/api/version'
-import type { VersionInfo, CodeSnippet, VersionDiffResponse, VersionAnalyzeResponse } from '@/types'
-import { formatRelativeTime, extractErrorMessage } from '@/utils/helpers'
+import { useVersionControlStore } from '@/stores/versionControl'
+import { getAiSettings } from '@/api/ai'
+import { formatRelativeTime } from '@/utils/helpers'
 import DiffEditor from '@/components/DiffEditor.vue'
 
-const loading = ref(false)
-const snippetsList = ref<CodeSnippet[]>([])
-const versionsList = ref<VersionInfo[]>([])
-const selectedSnippetId = ref<number | null>(null)
-const versionA = ref<number | null>(null)
-const versionB = ref<number | null>(null)
-const renderSideBySide = ref(true)
-const diffResult = ref<{ added: number; removed: number; modifications: number } | null>(null)
-const serverDiff = ref<VersionDiffResponse | null>(null)
-const diffEditorRef = ref()
-const showCreateDialog = ref(false)
-const showAnalyzeDialog = ref(false)
-const analyzeResult = ref<VersionAnalyzeResponse | null>(null)
-const analyzing = ref(false)
-const createVersionForm = ref({
-  versionName: '',
-  description: ''
-})
-const creating = ref(false)
-
-const originalVersion = computed(() => {
-  if (!versionA.value) return null
-  return versionsList.value.find(v => v.id === versionA.value) || null
-})
-
-const modifiedVersion = computed(() => {
-  if (!versionB.value) return null
-  return versionsList.value.find(v => v.id === versionB.value) || null
-})
-
-const detectLanguage = (version: VersionInfo): string => {
-  const snippet = snippetsList.value.find(s => s.id === version.snippetId)
-  return snippet?.languageType || 'plaintext'
-}
-
-const fetchSnippets = async () => {
-  loading.value = true
-  try {
-    const { getAllCodeSnippets } = await import('@/api/code')
-    const allSnippets = await getAllCodeSnippets()
-    snippetsList.value = allSnippets
-  } catch (error) {
-    console.error('获取代码片段列表失败:', error)
-    ElMessage.error(extractErrorMessage(error, '加载代码片段失败'))
-  } finally {
-    loading.value = false
-  }
-}
-
-const fetchVersions = async (snippetId: number) => {
-  loading.value = true
-  versionsList.value = []
-  versionA.value = null
-  versionB.value = null
-  
-  try {
-    const versions = await listVersions(snippetId)
-    versionsList.value = versions || []
-    
-    if (versions.length >= 2) {
-      versionA.value = versions[versions.length - 2].id
-      versionB.value = versions[versions.length - 1].id
-    } else if (versions.length === 1) {
-      versionA.value = versions[0].id
-    }
-  } catch (error) {
-    console.error('获取版本列表失败:', error)
-    ElMessage.error(extractErrorMessage(error, '加载版本列表失败'))
-  } finally {
-    loading.value = false
-  }
-}
-
-const handleSnippetChange = (snippetId: number | null) => {
-  if (snippetId) {
-    fetchVersions(snippetId)
-  } else {
-    versionsList.value = []
-    versionA.value = null
-    versionB.value = null
-  }
-}
-
-const handleSwapVersions = () => {
-  const temp = versionA.value
-  versionA.value = versionB.value
-  versionB.value = temp
-}
-
-const loadServerDiff = async () => {
-  if (!selectedSnippetId.value || !versionA.value || !versionB.value) {
-    serverDiff.value = null
-    return
-  }
-  try {
-    serverDiff.value = await compareVersionsApi(selectedSnippetId.value, versionA.value, versionB.value)
-  } catch (error) {
-    console.error('后端差异分析失败:', error)
-    ElMessage.error(extractErrorMessage(error, '后端差异分析失败'))
-  }
-}
+const store = useVersionControlStore()
+const editorTheme = ref<'vs-dark' | 'vs-light' | 'hc-black'>('vs-light')
+const editorFontSize = ref(14)
+const {
+  loading, snippetsList, versionsList, selectedSnippetId,
+  versionA, versionB, renderSideBySide, diffResult, serverDiff,
+  diffEditorRef, showCreateDialog, showAnalyzeDialog,
+  analyzeResult, analyzing, creating, createVersionForm,
+  originalVersion, modifiedVersion,
+} = storeToRefs(store)
+const {
+  detectLanguage, fetchSnippets, fetchVersions,
+  handleSnippetChange, swapVersions: handleSwapVersions, loadServerDiff,
+  doRollback: handleRollback, doAiAnalyze: handleAiAnalyze, doCreateVersion: handleCreateVersion
+} = store
 
 watch([versionA, versionB], () => {
   if (versionA.value && versionB.value) {
@@ -324,75 +239,19 @@ watch([versionA, versionB], () => {
   }
 })
 
-const handleRollback = async () => {
-  if (!selectedSnippetId.value || !versionA.value) {
-    return
-  }
-  try {
-    await ElMessageBox.confirm(
-      '回滚会覆盖当前代码内容，系统会自动创建备份版本，是否继续？',
-      '确认回滚',
-      { type: 'warning' }
-    )
-    await rollbackVersion(selectedSnippetId.value, versionA.value)
-    ElMessage.success('回滚成功（已自动备份当前内容）')
-    await fetchVersions(selectedSnippetId.value)
-  } catch (error) {
-    if (error === 'cancel' || error === 'close') {
-      return
-    }
-    console.error('回滚失败:', error)
-    ElMessage.error(extractErrorMessage(error, '回滚失败'))
-  }
-}
-
-const handleAiAnalyze = async () => {
-  if (!selectedSnippetId.value || !versionA.value || !versionB.value) {
-    ElMessage.warning('请先选择两个版本')
-    return
-  }
-  analyzing.value = true
-  try {
-    analyzeResult.value = await analyzeVersionsApi(selectedSnippetId.value, {
-      fromVersionId: versionA.value,
-      toVersionId: versionB.value
-    })
-    showAnalyzeDialog.value = true
-  } catch (error) {
-    console.error('AI 分析失败:', error)
-    ElMessage.error(extractErrorMessage(error, 'AI 分析失败'))
-  } finally {
-    analyzing.value = false
-  }
-}
-
-const handleCreateVersion = async () => {
-  if (!selectedSnippetId.value || !createVersionForm.value.versionName.trim()) {
-    ElMessage.warning('请输入版本名称')
-    return
-  }
-  
-  creating.value = true
-  try {
-    await createVersion(selectedSnippetId.value, {
-      versionName: createVersionForm.value.versionName,
-      description: createVersionForm.value.description
-    })
-    ElMessage.success('版本创建成功')
-    showCreateDialog.value = false
-    createVersionForm.value.versionName = ''
-    createVersionForm.value.description = ''
-    fetchVersions(selectedSnippetId.value)
-  } catch (error) {
-    console.error('创建版本失败:', error)
-    ElMessage.error(extractErrorMessage(error, '创建版本失败'))
-  } finally {
-    creating.value = false
-  }
-}
-
-onMounted(() => {
+onMounted(async () => {
   fetchSnippets()
+  try {
+    const aiSettings = await getAiSettings()
+    if (aiSettings.editorTheme) {
+      editorTheme.value = aiSettings.editorTheme as 'vs-dark' | 'vs-light' | 'hc-black'
+    }
+    if (aiSettings.fontSize) {
+      editorFontSize.value = aiSettings.fontSize
+    }
+  } catch {
+    // keep default
+  }
 })
 </script>
 

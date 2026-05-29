@@ -1,0 +1,21 @@
+{
+  "temperature" : 1.0,
+  "provider" : "real",
+  "model" : "ep-m-20260331190516-cwbhh",
+  "baseUrl" : "https://ark.cn-beijing.volces.com/api/v3",
+  "encryptedApiKey" : "59KxOW5I7QpOShSEFrDP6ByOEO6mcUSAzztSbCeGE5tWaQVaEstZI/KVilTwM/5wKJrGWM0lc3xFulsvmZSEaw==",
+  "encryptedEmbeddingApiKey" : "r4PQRoP7e0KcOQsFnon4nsVW4WYw2YW2CD0zRv674geKPot6JSCvT+fhWNxX52owd3tfjcfwHZMViGa8ZhV9",
+  "apiKeyPlain" : null,
+  "editorTheme" : "vs-light",
+  "fontSize" : 15,
+  "autoSave" : false,
+  "pageSize" : 20,
+  "maxContextTokens" : 4096,
+  "contextWindowRounds" : 4,
+  "providerApiKeys" : {
+    "real" : "97ab60c7-bd8a-419f-a7e8-a0e86013d132"
+  },
+  "providerModels" : {
+    "real" : "ep-m-20260331190516-cwbhh"
+  }
+}

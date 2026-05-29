@@ -1,5 +1,5 @@
 import request from '@/utils/request'
-import type { AIChatRequest, AIChatResponse, AIMessage } from '@/types'
+import type { AIChatRequest, AIChatResponse, AIMessage, AISettings, ProviderInfo } from '@/types'
 
 export interface AgentExecuteRequest {
   instruction: string
@@ -79,6 +79,27 @@ export const setAiTemperature = (value: number): Promise<number> => {
   })
 }
 
+/**
+ * 获取全部 AI 设置
+ */
+export const getAiSettings = (): Promise<AISettings> => {
+  return request.get<AISettings>('/ai/settings')
+}
+
+/**
+ * 保存全部 AI 设置
+ */
+export const saveAiSettings = (settings: AISettings): Promise<AISettings> => {
+  return request.put<AISettings>('/ai/settings', settings, { timeout: 10000 })
+}
+
+/**
+ * 获取可用 LLM 提供商列表
+ */
+export const getAiProviders = (): Promise<ProviderInfo[]> => {
+  return request.get<ProviderInfo[]>('/ai/settings/providers')
+}
+
 interface ChatStreamCallbacks {
   onChunk: (chunk: string, sessionId?: string) => void
   onDone: (sessionId?: string, answer?: string) => void
@@ -89,7 +110,9 @@ interface ChatStreamCallbacks {
  * AI 对话流式接口（SSE over fetch）
  */
 export const aiChatStream = async (data: AIChatRequest, callbacks: ChatStreamCallbacks): Promise<void> => {
-  const response = await fetch('/api/ai/chat/stream', {
+  const baseUrl = typeof window !== 'undefined' && window.navigator.userAgent.includes('Electron')
+    ? 'http://localhost:8080' : ''
+  const response = await fetch(`${baseUrl}/api/ai/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'

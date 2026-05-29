@@ -96,18 +96,19 @@ public class SearchQueryExecutor {
     }
 
     private List<CodeSnippet> loadFullTextSnippets(SearchRequest request) {
+        String keyword = request.getKeyword();
         if (request.getLanguageType() != null && request.getTag() != null) {
-            return codeSnippetRepository.fullTextSearchByLanguageAndTag(
-                    request.getKeyword(), request.getLanguageType(), request.getTag());
+            return codeSnippetRepository.likeSearchByLanguageAndTag(
+                    keyword, request.getLanguageType(), request.getTag());
         }
         if (request.getLanguageType() != null) {
-            return codeSnippetRepository.fullTextSearchByLanguage(
-                    request.getKeyword(), request.getLanguageType());
+            return codeSnippetRepository.likeSearchByLanguage(
+                    keyword, request.getLanguageType());
         }
         if (request.getTag() != null) {
-            return codeSnippetRepository.fullTextSearchByTag(request.getKeyword(), request.getTag());
+            return codeSnippetRepository.likeSearchByTag(keyword, request.getTag());
         }
-        return codeSnippetRepository.fullTextSearch(request.getKeyword());
+        return codeSnippetRepository.likeSearch(keyword);
     }
 
     private boolean hasKeyword(SearchRequest request) {

@@ -50,3 +50,8 @@ node_modules/
 dist/
 coverage/
 .vite/
+
+### Electron ###
+web/codekit-client/dist-electron/
+web/codekit-client/build/codekit.jar
+web/codekit-client/build/icon.iconset/

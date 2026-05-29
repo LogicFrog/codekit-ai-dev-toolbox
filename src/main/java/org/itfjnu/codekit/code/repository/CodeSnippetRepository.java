@@ -38,8 +38,45 @@ public interface CodeSnippetRepository extends JpaRepository<CodeSnippet, Long> 
     List<CodeSnippet> findByLanguageTypeAndTagName(@Param("languageType") String languageType, @Param("tag") String tag);
 
     /**
-     * 全文搜索（关键词检索）
-     * 使用 MySQL FULLTEXT 索引
+     * LIKE 搜索（兼容 H2/MySQL，替代 FULLTEXT）
+     */
+    @Query("SELECT s FROM CodeSnippet s WHERE " +
+            "s.fileName LIKE CONCAT('%', :keyword, '%') OR " +
+            "s.className LIKE CONCAT('%', :keyword, '%') OR " +
+            "s.codeContent LIKE CONCAT('%', :keyword, '%')")
+    List<CodeSnippet> likeSearch(@Param("keyword") String keyword);
+
+    @Query("SELECT s FROM CodeSnippet s WHERE s.languageType = :languageType AND (" +
+            "s.fileName LIKE CONCAT('%', :keyword, '%') OR " +
+            "s.className LIKE CONCAT('%', :keyword, '%') OR " +
+            "s.codeContent LIKE CONCAT('%', :keyword, '%'))")
+    List<CodeSnippet> likeSearchByLanguage(
+            @Param("keyword") String keyword,
+            @Param("languageType") String languageType
+    );
+
+    @Query("SELECT DISTINCT s FROM CodeSnippet s JOIN s.tags t WHERE t = :tag AND (" +
+            "s.fileName LIKE CONCAT('%', :keyword, '%') OR " +
+            "s.className LIKE CONCAT('%', :keyword, '%') OR " +
+            "s.codeContent LIKE CONCAT('%', :keyword, '%'))")
+    List<CodeSnippet> likeSearchByTag(
+            @Param("keyword") String keyword,
+            @Param("tag") String tag
+    );
+
+    @Query("SELECT DISTINCT s FROM CodeSnippet s JOIN s.tags t WHERE " +
+            "s.languageType = :languageType AND t = :tag AND (" +
+            "s.fileName LIKE CONCAT('%', :keyword, '%') OR " +
+            "s.className LIKE CONCAT('%', :keyword, '%') OR " +
+            "s.codeContent LIKE CONCAT('%', :keyword, '%'))")
+    List<CodeSnippet> likeSearchByLanguageAndTag(
+            @Param("keyword") String keyword,
+            @Param("languageType") String languageType,
+            @Param("tag") String tag
+    );
+
+    /**
+     * 全文搜索（关键词检索）- MySQL FULLTEXT
      */
     @Query(value = "SELECT * FROM code_snippet " +
             "WHERE MATCH(file_name, class_name, code_content) " +

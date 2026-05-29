@@ -1,6 +1,7 @@
 package org.itfjnu.codekit.common.cache;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -8,6 +9,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Service
+@ConditionalOnBean(RedisTemplate.class)
 public class RedisCacheService {
 
     private final RedisTemplate<String, String> redisTemplate;

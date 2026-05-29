@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.itfjnu.codekit.ai.model.ChatMessage;
+import org.itfjnu.codekit.ai.config.AIProperties;
+import org.itfjnu.codekit.utils.TokenEstimator;
+import org.itfjnu.codekit.ai.dto.ChatMessage;
 import org.itfjnu.codekit.ai.service.SessionHistoryService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -31,17 +33,16 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class SessionHistoryServiceImpl implements SessionHistoryService {
 
-
-    // 每个会话最多保留消息条数（user+assistant 一起算）
     private static final int MAX_MESSAGES_PER_SESSION = 20;
-    // 单条消息最大长度，避免超长内容撑爆内存/token
     private static final int MAX_SINGLE_MESSAGE_CHARS = 8000;
-    // 会话 TTL：30 分钟不活跃自动清理
     private static final long SESSION_TTL_MINUTES = 30;
+    private static final int DEFAULT_CONTEXT_TOKEN_BUDGET = 4096;
+    private static final int DEFAULT_CONTEXT_ROUNDS = 4;
 
     @Value("${ai.session.store-file:./data/ai-sessions.json}")
     private String storeFile;
 
+    private final AIProperties aiProperties;
     private final ObjectMapper objectMapper;
 
     private final Map<String, Deque<ChatMessage>> sessionStore = new ConcurrentHashMap<>();
@@ -50,6 +51,16 @@ public class SessionHistoryServiceImpl implements SessionHistoryService {
     @PostConstruct
     public void init() {
         loadFromDisk();
+    }
+
+    private int maxContextTokens() {
+        int val = aiProperties.getMaxContextTokens();
+        return val > 0 ? val : DEFAULT_CONTEXT_TOKEN_BUDGET;
+    }
+
+    private int maxContextRounds() {
+        int val = aiProperties.getMaxContextRounds();
+        return val > 0 ? val : DEFAULT_CONTEXT_ROUNDS;
     }
 
     @Override
@@ -78,6 +89,51 @@ public class SessionHistoryServiceImpl implements SessionHistoryService {
     }
 
     @Override
+    public List<ChatMessage> getRecentMessagesByTokenBudget(String sessionId, int maxTokens) {
+        cleanupExpiredSessions();
+        Deque<ChatMessage> deque = sessionStore.get(sessionId);
+        if (deque == null || deque.isEmpty()) {
+            return List.of();
+        }
+
+        int budget = maxTokens > 0 ? maxTokens : maxContextTokens();
+        List<ChatMessage> all = new ArrayList<>(deque);
+        List<ChatMessage> selected = new ArrayList<>();
+        int usedTokens = 0;
+
+        for (int i = all.size() - 1; i >= 0; i--) {
+            ChatMessage msg = all.get(i);
+            int msgTokens = msg.getEstimatedTokens();
+            if (usedTokens + msgTokens > budget) {
+                if (!selected.isEmpty()) {
+                    break;
+                }
+                String truncated = TokenEstimator.truncateToTokenBudget(msg.getContent(), budget);
+                ChatMessage truncatedMsg = new ChatMessage(msg.getRole(), truncated, msg.getTime());
+                selected.add(0, truncatedMsg);
+                break;
+            }
+            usedTokens += msgTokens;
+            selected.add(0, msg);
+        }
+
+        if (!selected.isEmpty()) {
+            log.debug("Token-aware context: {}/{} tokens, {} messages selected from {} total",
+                    usedTokens, budget, selected.size(), all.size());
+        }
+        return selected;
+    }
+
+    @Override
+    public int getSessionTokenUsage(String sessionId) {
+        Deque<ChatMessage> deque = sessionStore.get(sessionId);
+        if (deque == null || deque.isEmpty()) {
+            return 0;
+        }
+        return deque.stream().mapToInt(ChatMessage::getEstimatedTokens).sum();
+    }
+
+    @Override
     public Boolean clearSession(String sessionId) {
         boolean removed = sessionStore.remove(sessionId) != null;
         flushToDiskSafe();
@@ -92,7 +148,15 @@ public class SessionHistoryServiceImpl implements SessionHistoryService {
             if (safe.length() > MAX_SINGLE_MESSAGE_CHARS) {
                 safe = safe.substring(0, MAX_SINGLE_MESSAGE_CHARS);
             }
-            deque.addLast(new ChatMessage(role, safe, LocalDateTime.now()));
+            ChatMessage message = new ChatMessage(role, safe, LocalDateTime.now());
+            deque.addLast(message);
+
+            int sessionTokens = deque.stream().mapToInt(ChatMessage::getEstimatedTokens).sum();
+            if (sessionTokens > maxContextTokens() * 3) {
+                deque.removeFirst();
+                log.debug("Session {} exceeded max tokens, pruned oldest message", sessionId);
+            }
+
             while (deque.size() > MAX_MESSAGES_PER_SESSION) {
                 deque.removeFirst();
             }
@@ -112,7 +176,6 @@ public class SessionHistoryServiceImpl implements SessionHistoryService {
         });
     }
 
-    // 每 60 秒兜底落盘一次，防止进程异常中断导致数据丢失
     @Scheduled(fixedDelay = 60000)
     public void periodicFlush() {
         flushToDiskSafe();
@@ -166,5 +229,4 @@ public class SessionHistoryServiceImpl implements SessionHistoryService {
             }
         }
     }
-
 }

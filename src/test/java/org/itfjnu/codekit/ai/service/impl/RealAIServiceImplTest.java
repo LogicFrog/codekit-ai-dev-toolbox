@@ -3,24 +3,20 @@ package org.itfjnu.codekit.ai.service.impl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.itfjnu.codekit.ai.config.AIProperties;
 import org.itfjnu.codekit.ai.dto.AIChatRequest;
-import org.itfjnu.codekit.ai.model.ChatMessage;
+import org.itfjnu.codekit.ai.dto.ChatMessage;
+import org.itfjnu.codekit.ai.prompt.service.impl.PromptTemplateServiceImpl;
 import org.itfjnu.codekit.ai.service.SessionHistoryService;
 import org.itfjnu.codekit.common.dto.ErrorCode;
 import org.itfjnu.codekit.common.exception.ServiceException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.support.ResourcePatternResolver;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
 
-/**
- * RealAIServiceImpl 单元测试（无 Mockito 版本）
- *
- * 说明：
- * 1. 当前运行环境下 Mockito inline mock maker 无法附加 agent
- * 2. 为保证测试可稳定执行，改为真实对象 + 断言异常行为
- */
 class RealAIServiceImplTest {
 
     private RealAIServiceImpl realAIService;
@@ -28,8 +24,11 @@ class RealAIServiceImplTest {
     @BeforeEach
     void setUp() {
         AIProperties aiProperties = new AIProperties();
-        aiProperties.setApiKey(""); // 未配置
-        realAIService = new RealAIServiceImpl(aiProperties, new ObjectMapper(), new NoopSessionHistoryService());
+        aiProperties.setApiKey("");
+        ResourcePatternResolver resolver = mock(ResourcePatternResolver.class);
+        PromptTemplateServiceImpl promptTemplateService = new PromptTemplateServiceImpl(resolver);
+        promptTemplateService.init();
+        realAIService = new RealAIServiceImpl(aiProperties, new ObjectMapper(), new NoopSessionHistoryService(), promptTemplateService);
     }
 
     @Test
@@ -43,13 +42,10 @@ class RealAIServiceImplTest {
     }
 
     @Test
-    @DisplayName("测试 2：getProviderName() 返回 'real'")
+    @DisplayName("测试 2：getProviderName() 返回有效的提供商名称")
     void testGetProviderName() {
-        // 执行
         String providerName = realAIService.getProviderName();
-
-        // 断言
-        assertEquals("real", providerName, "提供者名称应该是 'real'");
+        assertEquals("豆包 (Doubao)", providerName, "默认 provider 应返回豆包");
     }
 
     @Test
@@ -116,6 +112,16 @@ class RealAIServiceImplTest {
         @Override
         public java.util.List<ChatMessage> getRecentMessages(String sessionId, int maxRounds) {
             return java.util.List.of();
+        }
+
+        @Override
+        public java.util.List<ChatMessage> getRecentMessagesByTokenBudget(String sessionId, int maxTokens) {
+            return java.util.List.of();
+        }
+
+        @Override
+        public int getSessionTokenUsage(String sessionId) {
+            return 0;
         }
 
         @Override

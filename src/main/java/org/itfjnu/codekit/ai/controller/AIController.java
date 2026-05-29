@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.itfjnu.codekit.ai.dto.AIChatRequest;
 import org.itfjnu.codekit.ai.dto.AIChatResponse;
-import org.itfjnu.codekit.ai.model.ChatMessage;
+import org.itfjnu.codekit.ai.dto.ChatMessage;
 import org.itfjnu.codekit.ai.service.AIService;
 import org.itfjnu.codekit.ai.service.SessionHistoryService;
 import org.itfjnu.codekit.common.dto.ApiResponse;

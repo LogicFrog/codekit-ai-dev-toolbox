@@ -26,27 +26,24 @@ public class AIStartupValidator {
     @PostConstruct
     public void validate() {
         String provider = aiProperties.getProvider();
-        boolean realProvider = "real".equalsIgnoreCase(provider);
+        boolean isRealProvider = !"mock".equalsIgnoreCase(provider);
 
-        if (realProvider) {
-            if (!aiProperties.isConfigured()) {
-                throw new IllegalStateException("AI provider=real 时必须配置 ai.api-key");
-            }
-            if (!StringUtils.hasText(aiProperties.getModel())) {
-                throw new IllegalStateException("AI provider=real 时必须配置 ai.model");
-            }
+        if (isRealProvider && !aiProperties.isConfigured()) {
+            log.warn("AI provider={} 已启用但 API Key 未配置，请在设置页面中配置", provider);
         }
 
         if (!StringUtils.hasText(embeddingApi)) {
-            throw new IllegalStateException("语义检索必须配置 ai.embedding-api");
+            log.warn("语义检索未配置 ai.embedding-api，语义检索功能将不可用");
         }
         if (!StringUtils.hasText(embeddingModel)) {
-            throw new IllegalStateException("语义检索必须配置 ai.embedding-model");
+            log.warn("语义检索未配置 ai.embedding-model，语义检索功能将不可用");
         }
         if (!StringUtils.hasText(embeddingApiKey)) {
-            throw new IllegalStateException("语义检索必须配置 ai.embedding-api-key（或 ai.api-key）");
+            log.warn("语义检索未配置 ai.embedding-api-key（或 ai.api-key），语义检索功能将不可用");
         }
 
-        log.info("AI 启动校验通过，provider={}, embeddingModel={}", provider, embeddingModel);
+        if (StringUtils.hasText(embeddingApi) && StringUtils.hasText(embeddingModel) && StringUtils.hasText(embeddingApiKey)) {
+            log.info("AI 启动校验通过，provider={}, embeddingModel={}", provider, embeddingModel);
+        }
     }
 }

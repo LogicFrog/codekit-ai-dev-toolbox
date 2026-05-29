@@ -1,4 +1,4 @@
-package org.itfjnu.codekit.common.config;
+package org.itfjnu.codekit.common.exception;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;

@@ -5,14 +5,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.itfjnu.codekit.ai.config.AIProperties;
 import org.itfjnu.codekit.common.dto.ErrorCode;
 import org.itfjnu.codekit.common.exception.BusinessException;
 import org.itfjnu.codekit.search.service.EmbeddingService;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
@@ -27,16 +28,7 @@ public class HttpEmbeddingServiceImpl implements EmbeddingService {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
-
-    @Value("${ai.embedding-api}")
-    private String embeddingApi;
-
-    @Value("${ai.embedding-model:}")
-    private String embeddingModel;
-
-    @Value("${ai.embedding-api-key:${ai.api-key:}}")
-    private String apiKey;
-
+    private final AIProperties aiProperties;
 
     @Override
     public List<Double> embedText(String text) {
@@ -44,11 +36,14 @@ public class HttpEmbeddingServiceImpl implements EmbeddingService {
             throw new BusinessException(ErrorCode.EMBEDDING_TEXT_EMPTY);
         }
 
-        String rawApi = embeddingApi == null ? "" : embeddingApi.trim();
-        if (rawApi.isBlank()) {
+        String embeddingApi = aiProperties.getEmbeddingApi();
+        String embeddingModel = aiProperties.getEmbeddingModel();
+        String apiKey = getEffectiveApiKey();
+
+        if (!StringUtils.hasText(embeddingApi)) {
             throw new BusinessException(ErrorCode.CONFIG_ERROR, "embedding-api 未配置");
         }
-        if (embeddingModel == null || embeddingModel.isBlank()) {
+        if (!StringUtils.hasText(embeddingModel)) {
             throw new BusinessException(ErrorCode.CONFIG_ERROR, "embedding-model 未配置");
         }
 
@@ -58,7 +53,7 @@ public class HttpEmbeddingServiceImpl implements EmbeddingService {
                     "input", List.of(text)
             );
 
-            String resp = postEmbedding(rawApi, req);
+            String resp = postEmbedding(embeddingApi.trim(), apiKey, req);
             return parseEmbeddingFromResponse(resp);
         } catch (RestClientResponseException e) {
             throw new BusinessException(
@@ -76,7 +71,15 @@ public class HttpEmbeddingServiceImpl implements EmbeddingService {
         }
     }
 
-    private String postEmbedding(String uri, Map<String, Object> body) {
+    private String getEffectiveApiKey() {
+        String key = aiProperties.getEmbeddingApiKey();
+        if (StringUtils.hasText(key)) {
+            return key.trim();
+        }
+        return aiProperties.getApiKey();
+    }
+
+    private String postEmbedding(String uri, String apiKey, Map<String, Object> body) {
         return restClient.post()
                 .uri(uri)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
@@ -134,6 +137,6 @@ public class HttpEmbeddingServiceImpl implements EmbeddingService {
 
     @Override
     public String modelName() {
-        return embeddingModel;
+        return aiProperties.getEmbeddingModel();
     }
 }

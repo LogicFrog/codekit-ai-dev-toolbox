@@ -9,6 +9,7 @@ export default defineConfig({
       '@': resolve(__dirname, 'src')
     }
   },
+  base: './',
   server: {
     port: 5173,
     proxy: {
@@ -17,5 +18,9 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true
   }
 })

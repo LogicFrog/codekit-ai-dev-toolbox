@@ -278,6 +278,7 @@
             v-model="currentCode.codeContent"
             :language="currentCode.languageType"
             :theme="editorTheme"
+            :fontSize="editorFontSize"
           />
         </div>
       </section>
@@ -459,491 +460,124 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  ArrowUp,
-  ArrowRightBold,
-  ChatDotRound,
-  Check,
-  Delete,
-  Document,
-  Edit,
-  Folder,
-  FolderAdd,
-  FolderOpened,
-  Plus,
-  Search,
-  Upload,
-  Clock
-} from '@element-plus/icons-vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { storeToRefs } from 'pinia'
+import {
+  ArrowUp, ArrowRightBold, ChatDotRound, Check, Delete,
+  Document, Edit, Folder, FolderAdd, FolderOpened, Plus, Search, Upload, Clock
+} from '@element-plus/icons-vue'
 import CodeEditor from '@/components/CodeEditor.vue'
-import { listFs } from '@/api/system'
-import {
-  createCategory,
-  createVersion,
-  deleteCategory,
-  deleteCodeSnippet,
-  getAllCodeSnippets,
-  getScanStatus,
-  listCategories,
-  listCodeDependencies,
-  renameCategory,
-  saveCodeSnippet,
-  saveCodeSnippetByPath,
-  scanLocalCode
-} from '@/api/code'
-import type { CodeCategory, CodeSnippet, FsItem } from '@/types'
-import {
-  extractErrorMessage,
-  formatRelativeTime,
-  getLanguageColor
-} from '@/utils/helpers'
+import { useCodeManagerStore } from '@/stores/codeManager'
+import { getAiSettings } from '@/api/ai'
+import type { CodeCategory, FsItem, CodeSnippet } from '@/types'
+import { formatRelativeTime, getLanguageColor } from '@/utils/helpers'
 
 const router = useRouter()
-
-const scanDir = ref('')
-const scanPath = ref('/')
-const searchKeyword = ref('')
-const scanning = ref(false)
-const editorTheme = ref<'vs-dark' | 'vs-light'>('vs-light')
-const showImportDialog = ref(false)
-const showCreateCategoryDialog = ref(false)
-const showFileExplorer = ref(false)
-const showScanExplorer = ref(false)
-const showTagInput = ref(false)
-const newTag = ref('')
-const newCategoryName = ref('')
-const editingCategory = ref<CodeCategory | null>(null)
 const activeDetails = ref<string[]>(['info'])
-const currentPath = ref('/')
-const selectedDetailCategoryId = ref<number | null>(null)
-const expandedCategoryIds = ref<number[]>([])
-const lockImportCategory = ref(false)
+const editorFontSize = ref(14)
 
-const loading = reactive({
-  list: false,
-  save: false,
-  import: false,
-  files: false,
-  scanFiles: false,
-  categories: false
-})
+const store = useCodeManagerStore()
+const {
+  scanDir, scanPath, searchKeyword, scanning, editorTheme, codeList, categories,
+  currentCode, total, expandedCategoryIds, currentPath, showImportDialog,
+  showCreateCategoryDialog, showFileExplorer, showScanExplorer, showTagInput,
+  newTag, newCategoryName, editingCategory, selectedDetailCategoryId,
+  fileList, scanFileList, loading, importForm,
+  canGoUp, importCategoryLocked, categoryFolders, uncategorizedSnippets,
+} = storeToRefs(store)
 
-const codeList = ref<CodeSnippet[]>([])
-const categories = ref<CodeCategory[]>([])
-const fileList = ref<FsItem[]>([])
-const scanFileList = ref<FsItem[]>([])
-const currentCode = ref<CodeSnippet | null>(null)
-const total = ref(0)
-
-const importForm = reactive({
-  filePath: '',
-  languageType: '',
-  tag: '',
-  categoryId: undefined as number | undefined
-})
-
-const canGoUp = computed(() => currentPath.value !== '/' && currentPath.value !== '')
-const importCategoryLocked = computed(() => lockImportCategory.value)
+const {
+  isFolderExpanded, toggleFolder,
+  selectCode: handleSelectCode, doScan: handleScan,
+  doImport: handleImport, saveCode: handleSaveCode,
+  removeCode: handleDeleteCode, doCreateVersion: handleCreateVersion,
+  doCreateCategory: handleCreateCategory, doDeleteCategory: handleDeleteCategory,
+  loadDirectory, loadScanDirectory,
+  addTag: handleAddTag, removeTag: handleRemoveTag,
+  resetImportForm, openImportDialog, closeCategoryDialog
+} = store
 
 const getCategoryName = (snippet: CodeSnippet) => snippet.category?.categoryName || '未分类'
-const isUncategorizedSnippet = (snippet: CodeSnippet) => !snippet.category?.id || snippet.category?.categoryName === '未分类'
 
-const categoryFolders = computed(() => {
-  return categories.value
-    .filter(category => category.categoryName !== '未分类')
-    .map(category => ({
-      category,
-      items: codeList.value.filter(item => item.category?.id === category.id)
-    }))
-})
-
-const uncategorizedSnippets = computed(() => {
-  return codeList.value.filter(isUncategorizedSnippet)
-})
-
-const isFolderExpanded = (categoryId: number) => expandedCategoryIds.value.includes(categoryId)
-
-const toggleFolder = (categoryId: number) => {
-  if (isFolderExpanded(categoryId)) {
-    expandedCategoryIds.value = expandedCategoryIds.value.filter(id => id !== categoryId)
-  } else {
-    expandedCategoryIds.value = [...expandedCategoryIds.value, categoryId]
-  }
-}
-
-const handleRefreshList = async () => {
-  loading.list = true
-  try {
-    const result = await getAllCodeSnippets()
-    codeList.value = [...result].sort((a, b) => {
-      const left = new Date(b.updateTime || b.createTime || 0).getTime()
-      const right = new Date(a.updateTime || a.createTime || 0).getTime()
-      return left - right
-    })
-    total.value = codeList.value.length
-
-    if (currentCode.value) {
-      const matched = codeList.value.find(item => item.id === currentCode.value?.id)
-      if (matched) {
-        currentCode.value = { ...matched, dependencies: currentCode.value.dependencies || [] }
-        selectedDetailCategoryId.value = matched.category?.id ?? null
-      }
-    }
-  } catch (error) {
-    ElMessage.error(extractErrorMessage(error, '加载代码列表失败'))
-    codeList.value = []
-    total.value = 0
-  } finally {
-    loading.list = false
-  }
-}
-
-const handleRefreshCategories = async () => {
-  loading.categories = true
-  try {
-    categories.value = await listCategories()
-  } catch (error) {
-    ElMessage.error(extractErrorMessage(error, '加载分类失败'))
-  } finally {
-    loading.categories = false
-  }
-}
-
-const openCreateCategoryDialog = () => {
+function openCreateCategoryDialog() {
   editingCategory.value = null
   newCategoryName.value = ''
   showCreateCategoryDialog.value = true
 }
 
-const openRenameCategoryDialog = (category: CodeCategory) => {
+function openRenameCategoryDialog(category: CodeCategory) {
   editingCategory.value = category
   newCategoryName.value = category.categoryName
   showCreateCategoryDialog.value = true
 }
 
-const closeCategoryDialog = () => {
-  showCreateCategoryDialog.value = false
-  editingCategory.value = null
-  newCategoryName.value = ''
+function handleSearch() {
+  if (!searchKeyword.value.trim()) return
+  router.push({ path: '/search-center', query: { keyword: searchKeyword.value } })
 }
 
-const handleSearch = () => {
-  if (!searchKeyword.value.trim()) {
-    return
-  }
-  router.push({
-    path: '/search-center',
-    query: { keyword: searchKeyword.value }
-  })
-}
-
-const handleSelectCode = async (code: CodeSnippet) => {
-  currentCode.value = {
-    ...code,
-    tags: [...(code.tags || [])]
-  }
-  selectedDetailCategoryId.value = code.category?.id ?? null
-  try {
-    currentCode.value.dependencies = await listCodeDependencies(code.id)
-  } catch {
-    currentCode.value.dependencies = []
-  }
-}
-
-const handleScan = async () => {
-  if (!scanDir.value) {
-    ElMessage.warning('请输入扫描目录')
-    return
-  }
-
-  scanning.value = true
-  try {
-    await scanLocalCode(scanDir.value)
-    ElMessage.info('扫描任务已启动')
-
-    const pollInterval = setInterval(async () => {
-      try {
-        const status = await getScanStatus(scanDir.value)
-        if (status.status === 'COMPLETED') {
-          clearInterval(pollInterval)
-          scanning.value = false
-          ElMessage.success('扫描完成')
-          await Promise.all([handleRefreshCategories(), handleRefreshList()])
-        } else if (status.status === 'FAILED') {
-          clearInterval(pollInterval)
-          scanning.value = false
-          ElMessage.error('扫描失败')
-        }
-      } catch {
-        clearInterval(pollInterval)
-        scanning.value = false
-      }
-    }, 2000)
-  } catch (error) {
-    scanning.value = false
-    ElMessage.error(extractErrorMessage(error, '扫描失败'))
-  }
-}
-
-const handleOpenFileExplorer = () => {
+function handleOpenFileExplorer() {
   currentPath.value = '/'
   loadDirectory('/')
   showFileExplorer.value = true
 }
 
-const handleOpenScanExplorer = () => {
+function handleOpenScanExplorer() {
   scanPath.value = '/'
   loadScanDirectory('/')
   showScanExplorer.value = true
 }
 
-const loadScanDirectory = async (path: string) => {
-  loading.scanFiles = true
-  try {
-    scanFileList.value = await listFs(path)
-    scanPath.value = path
-  } catch (error) {
-    ElMessage.error(extractErrorMessage(error, '加载目录失败'))
-  } finally {
-    loading.scanFiles = false
-  }
-}
-
-const handleScanGoUp = () => {
+function handleScanGoUp() {
   const parts = scanPath.value.split('/').filter(Boolean)
   parts.pop()
-  const parentPath = `/${parts.join('/')}`
-  loadScanDirectory(parentPath || '/')
+  loadScanDirectory(`/${parts.join('/')}` || '/')
 }
 
-const handleScanRowDblClick = (row: FsItem) => {
-  if (row.isDirectory) {
-    loadScanDirectory(row.path)
-  }
+function handleScanRowDblClick(row: FsItem) {
+  if (row.isDirectory) loadScanDirectory(row.path)
 }
 
-const handleConfirmScanDir = () => {
+function handleConfirmScanDir() {
   scanDir.value = scanPath.value
   showScanExplorer.value = false
 }
 
-const loadDirectory = async (path: string) => {
-  loading.files = true
-  try {
-    fileList.value = await listFs(path)
-    currentPath.value = path
-  } catch (error) {
-    ElMessage.error(extractErrorMessage(error, '加载目录失败'))
-  } finally {
-    loading.files = false
-  }
-}
-
-const handleGoUp = () => {
+function handleGoUp() {
   const parts = currentPath.value.split('/').filter(Boolean)
   parts.pop()
-  const parentPath = `/${parts.join('/')}`
-  loadDirectory(parentPath || '/')
+  loadDirectory(`/${parts.join('/')}` || '/')
 }
 
-const handleRowDblClick = (row: FsItem) => {
-  if (row.isDirectory) {
-    loadDirectory(row.path)
-  } else {
-    handleSelectFile(row)
-  }
+function handleRowDblClick(row: FsItem) {
+  if (row.isDirectory) loadDirectory(row.path)
+  else handleSelectFile(row)
 }
 
-const handleSelectFile = (row: FsItem) => {
+function handleSelectFile(row: FsItem) {
   importForm.filePath = row.path
   showFileExplorer.value = false
 }
 
-const resetImportForm = () => {
-  importForm.filePath = ''
-  importForm.languageType = ''
-  importForm.tag = ''
-  importForm.categoryId = undefined
-  lockImportCategory.value = false
-}
-
-const openImportDialog = (categoryId?: number) => {
-  resetImportForm()
-  if (typeof categoryId === 'number') {
-    importForm.categoryId = categoryId
-    lockImportCategory.value = true
-  }
-  showImportDialog.value = true
-}
-
-const handleImport = async () => {
-  if (!importForm.filePath) {
-    ElMessage.warning('请选择文件')
-    return
-  }
-
-  loading.import = true
-  try {
-    await saveCodeSnippetByPath(
-      importForm.filePath,
-      importForm.languageType || undefined,
-      importForm.tag || undefined,
-      importForm.categoryId
-    )
-    ElMessage.success('导入成功')
-    showImportDialog.value = false
-    resetImportForm()
-    await Promise.all([handleRefreshCategories(), handleRefreshList()])
-  } catch (error) {
-    ElMessage.error(extractErrorMessage(error, '导入失败'))
-  } finally {
-    loading.import = false
-  }
-}
-
-const handleSaveCode = async () => {
-  if (!currentCode.value) {
-    return
-  }
-
-  loading.save = true
-  try {
-    const payload: Partial<CodeSnippet> = {
-      ...currentCode.value,
-      category: selectedDetailCategoryId.value
-        ? { id: selectedDetailCategoryId.value, categoryName: '' }
-        : undefined
-    }
-    const saved = await saveCodeSnippet(payload)
-    currentCode.value = {
-      ...saved,
-      dependencies: currentCode.value.dependencies || []
-    }
-    selectedDetailCategoryId.value = saved.category?.id ?? null
-    ElMessage.success('保存成功')
-    await Promise.all([handleRefreshCategories(), handleRefreshList()])
-  } catch (error) {
-    ElMessage.error(extractErrorMessage(error, '保存失败'))
-  } finally {
-    loading.save = false
-  }
-}
-
-const handleDeleteCode = async () => {
-  if (!currentCode.value) {
-    return
-  }
-
-  try {
-    await ElMessageBox.confirm('确定要删除该代码片段吗？', '确认删除', { type: 'warning' })
-    await deleteCodeSnippet(currentCode.value.id)
-    currentCode.value = null
-    ElMessage.success('删除成功')
-    await Promise.all([handleRefreshCategories(), handleRefreshList()])
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error(extractErrorMessage(error, '删除失败'))
-    }
-  }
-}
-
-const handleCreateVersion = async () => {
-  if (!currentCode.value) {
-    return
-  }
-
-  try {
-    await createVersion(currentCode.value.id, {
-      versionName: `v${Date.now()}`,
-      description: '手动创建版本'
-    })
-    ElMessage.success('版本创建成功')
-  } catch (error) {
-    ElMessage.error(extractErrorMessage(error, '创建版本失败'))
-  }
-}
-
-const handleAddTag = () => {
-  const value = newTag.value.trim()
-  if (value && currentCode.value) {
-    currentCode.value.tags = [...new Set([...(currentCode.value.tags || []), value])]
-  }
-  newTag.value = ''
-  showTagInput.value = false
-}
-
-const handleRemoveTag = (tag: string) => {
-  if (!currentCode.value?.tags) {
-    return
-  }
-  currentCode.value.tags = currentCode.value.tags.filter(item => item !== tag)
-}
-
-const handleDetailCategoryChange = (categoryId: number | null) => {
-  if (!currentCode.value) {
-    return
-  }
+function handleDetailCategoryChange(categoryId: number | null) {
+  if (!currentCode.value) return
   currentCode.value.category = categories.value.find(item => item.id === categoryId) || null
 }
 
-const handleCreateCategory = async () => {
-  const categoryName = newCategoryName.value.trim()
-  if (!categoryName) {
-    ElMessage.warning('请输入分类名称')
-    return
-  }
-
-  loading.categories = true
-  const isEditing = !!editingCategory.value
-  const editingCategoryId = editingCategory.value?.id
-  try {
-    const category = isEditing
-      ? await renameCategory(editingCategoryId as number, categoryName)
-      : await createCategory(categoryName)
-    await handleRefreshCategories()
-    ElMessage.success(isEditing ? '分类已重命名' : '分类创建成功')
-    expandedCategoryIds.value = [...expandedCategoryIds.value, category.id]
-    closeCategoryDialog()
-
-    if (!isEditing && importForm.categoryId == null) {
-      importForm.categoryId = category.id
-    }
-  } catch (error) {
-    ElMessage.error(extractErrorMessage(error, isEditing ? '重命名分类失败' : '创建分类失败'))
-  } finally {
-    loading.categories = false
-  }
-}
-
-const handleDeleteCategory = async (category: CodeCategory) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定删除分类“${category.categoryName}”吗？该分类下的代码会自动归入未分类。`,
-      '确认删除',
-      { type: 'warning' }
-    )
-    await deleteCategory(category.id)
-    expandedCategoryIds.value = expandedCategoryIds.value.filter(id => id !== category.id)
-    if (selectedDetailCategoryId.value === category.id) {
-      selectedDetailCategoryId.value = null
-      if (currentCode.value) {
-        currentCode.value.category = null
-      }
-    }
-    ElMessage.success('分类已删除')
-    await Promise.all([handleRefreshCategories(), handleRefreshList()])
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error(extractErrorMessage(error, '删除分类失败'))
-    }
-  }
-}
-
 onMounted(async () => {
-  await Promise.all([handleRefreshCategories(), handleRefreshList()])
+  await Promise.all([store.refreshCategories(), store.refreshList()])
+  try {
+    const aiSettings = await getAiSettings()
+    if (aiSettings.editorTheme) {
+      store.editorTheme = aiSettings.editorTheme as 'vs-dark' | 'vs-light'
+    }
+    if (aiSettings.fontSize) {
+      editorFontSize.value = aiSettings.fontSize
+    }
+  } catch {
+    // keep default
+  }
 })
 </script>
 

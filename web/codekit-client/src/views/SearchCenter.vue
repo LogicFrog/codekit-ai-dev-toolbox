@@ -254,42 +254,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import {
   Search, RefreshLeft, Document, Clock, PriceTag, ArrowRight, DocumentCopy
 } from '@element-plus/icons-vue'
-import { keywordSearch, semanticSearch, getHotKeywords, getSearchHistory } from '@/api/search'
-import { getAllCodeSnippets, getCodeSnippet } from '@/api/code'
-import type { SearchResponse, SearchHistory, CodeSnippet } from '@/types'
-import { formatRelativeTime, getLanguageColor, getCodePreview, copyToClipboard, extractErrorMessage } from '@/utils/helpers'
+import { storeToRefs } from 'pinia'
+import { useSearchStore } from '@/stores/search'
+import { formatRelativeTime, getLanguageColor, getCodePreview } from '@/utils/helpers'
 
 const route = useRoute()
-
-const searchForm = reactive({
-  keyword: '',
-  searchType: 'keyword',
-  language: '',
-  tag: '',
-  exactMatch: false
-})
-
-const searching = ref(false)
-const hasSearched = ref(false)
-const searchResults = ref<SearchResponse[]>([])
-const total = ref(0)
-const currentPage = ref(1)
-const pageSize = ref(10)
-const showDetailDrawer = ref(false)
-const selectedResult = ref<SearchResponse | null>(null)
-const fullCodeContent = ref('')
-const loadingFullCode = ref(false)
-const copying = ref(false)
-
-const hotKeywords = ref<string[]>([])
-const recentSearches = ref<SearchHistory[]>([])
-const availableTags = ref<string[]>([])
+const store = useSearchStore()
+const {
+  searchForm, searching, hasSearched, searchResults, total,
+  currentPage, pageSize, showDetailDrawer, selectedResult,
+  fullCodeContent, loadingFullCode, copying,
+  hotKeywords, recentSearches, availableTags,
+} = storeToRefs(store)
+const {
+  doSearch: handleSearch, quickSearch: handleQuickSearch,
+  resetSearch: handleReset, viewResult, copyResultCode: copyCode,
+  loadInitialData
+} = store
 
 const languages = [
   { label: '全部', value: '' },
@@ -302,54 +288,6 @@ const languages = [
   { label: 'C++', value: 'C++' }
 ]
 
-const handleSearch = async () => {
-  if (!searchForm.keyword.trim() && !searchForm.language && !searchForm.tag) {
-    ElMessage.warning('请输入搜索关键词或选择语言/标签')
-    return
-  }
-
-  currentPage.value = 1
-  searching.value = true
-  hasSearched.value = true
-
-  try {
-    const searchApi = searchForm.searchType === 'semantic' ? semanticSearch : keywordSearch
-    const result = await searchApi({
-      keyword: searchForm.keyword || undefined,
-      languageType: searchForm.language || undefined,
-      tag: searchForm.tag || undefined,
-      exactMatch: searchForm.exactMatch,
-      page: currentPage.value - 1,
-      size: pageSize.value
-    })
-    searchResults.value = result.content || []
-    total.value = result.totalElements || 0
-  } catch (error) {
-    console.error('搜索失败:', error)
-    ElMessage.error(extractErrorMessage(error, '搜索失败'))
-    searchResults.value = []
-    total.value = 0
-  } finally {
-    searching.value = false
-  }
-}
-
-const handleQuickSearch = (keyword: string) => {
-  searchForm.keyword = keyword
-  currentPage.value = 1
-  handleSearch()
-}
-
-const handleReset = () => {
-  searchForm.keyword = ''
-  searchForm.language = ''
-  searchForm.tag = ''
-  searchForm.exactMatch = false
-  hasSearched.value = false
-  searchResults.value = []
-  total.value = 0
-}
-
 const handlePageChange = (page: number) => {
   currentPage.value = page
   handleSearch()
@@ -359,63 +297,6 @@ const handleSizeChange = (size: number) => {
   pageSize.value = size
   currentPage.value = 1
   handleSearch()
-}
-
-const viewResult = async (result: SearchResponse) => {
-  selectedResult.value = result
-  showDetailDrawer.value = true
-  loadingFullCode.value = true
-  try {
-    const fullSnippet = await getCodeSnippet(result.id)
-    fullCodeContent.value = fullSnippet.codeContent
-  } catch (error) {
-    console.error('加载完整代码失败:', error)
-    fullCodeContent.value = result.codePreview || ''
-  } finally {
-    loadingFullCode.value = false
-  }
-}
-
-const copyCode = async () => {
-  if (!selectedResult.value) return
-  
-  copying.value = true
-  try {
-    const codeToCopy = fullCodeContent.value || selectedResult.value.codePreview || ''
-    const success = await copyToClipboard(codeToCopy)
-    if (success) {
-      ElMessage.success('代码已复制')
-    } else {
-      ElMessage.error('复制失败')
-    }
-  } finally {
-    copying.value = false
-  }
-}
-
-const loadInitialData = async () => {
-  try {
-    const [hotResult, historyResult, allSnippets] = await Promise.all([
-      getHotKeywords().catch(() => [] as string[]),
-      getSearchHistory().catch(() => [] as SearchHistory[]),
-      getAllCodeSnippets().catch(() => [] as CodeSnippet[])
-    ])
-    
-    const hotKeywordsData = Array.isArray(hotResult) ? hotResult : []
-    const historyData = Array.isArray(historyResult) ? historyResult : []
-    const snippetsData = Array.isArray(allSnippets) ? allSnippets : []
-    
-    hotKeywords.value = hotKeywordsData.slice(0, 6)
-    recentSearches.value = historyData.slice(0, 5)
-    
-    const allTags = new Set<string>()
-    snippetsData.forEach((snippet: CodeSnippet) => {
-      snippet.tags?.forEach(tag => allTags.add(tag))
-    })
-    availableTags.value = Array.from(allTags)
-  } catch (error) {
-    console.error('加载初始数据失败:', error)
-  }
 }
 
 onMounted(() => {

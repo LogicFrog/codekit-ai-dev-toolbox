@@ -98,10 +98,10 @@ public class CodeOptimizeSkillImpl implements Skill {
 
     private String buildOptimizeQuestion(String optimizeType) {
         return switch (optimizeType.toLowerCase()) {
-            case "performance" -> "请优化这段代码的性能，减少时间复杂度和空间复杂度，给出具体的优化方案和优化后的代码";
-            case "readability" -> "请优化这段代码的可读性，重构变量命名、提取方法、简化逻辑，让代码更易理解";
-            case "bugfix" -> "请检查这段代码中可能存在的 Bug（空指针、数组越界、逻辑错误等），给出修复方案和修复后的代码";
-            default -> "请全面优化这段代码，从性能、可读性、安全性三个方面进行优化，给出具体的优化建议和优化后的代码";
+            case "performance" -> "性能优化";
+            case "readability" -> "可读性优化";
+            case "bugfix" -> "Bug修复";
+            default -> "综合优化";
         };
     }
 }

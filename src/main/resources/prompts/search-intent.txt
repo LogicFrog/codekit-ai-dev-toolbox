@@ -1,0 +1,5 @@
+请分析以下用户查询的检索意图：
+查询内容：{query}
+
+请输出 JSON 格式：
+{"keywords":["关键词1","关键词2"],"mode":"semantic|keyword|hybrid","languageType":"推断的编程语言"}
