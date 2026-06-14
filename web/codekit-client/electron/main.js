@@ -3,6 +3,7 @@ import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import http from 'http'
+import os from 'os'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -10,7 +11,7 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 let mainWindow = null
 let backendProcess = null
-const BACKEND_PORT = 8080
+const BACKEND_PORT = 18080
 
 function findJar() {
   const candidates = [
@@ -25,7 +26,18 @@ function findJar() {
 }
 
 function getJavaPath() {
-  return process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', 'java') : 'java'
+  if (process.env.JAVA_HOME) return path.join(process.env.JAVA_HOME, 'bin', 'java')
+  const candidates = [
+    '/opt/homebrew/opt/openjdk@21/bin/java',
+    '/opt/homebrew/opt/openjdk/bin/java',
+    '/opt/homebrew/bin/java',
+    '/usr/local/bin/java',
+    '/usr/bin/java'
+  ]
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p
+  }
+  return 'java'
 }
 
 function waitForBackend(retries = 30, delay = 1000) {
@@ -68,28 +80,34 @@ function startBackend() {
   console.log(`启动后端: ${java} -jar ${jarPath}`)
 
   const dataDir = path.join(app.getPath('userData'), 'data')
+  const homeCodekitDir = path.join(os.homedir(), '.codekit', 'data')
+  fs.mkdirSync(dataDir, { recursive: true })
+  fs.mkdirSync(homeCodekitDir, { recursive: true })
+
+  const logFile = path.join(dataDir, 'backend.log')
+  const logStream = fs.createWriteStream(logFile, { flags: 'a' })
 
   backendProcess = spawn(java, [
     '-jar', jarPath,
     `--ai.settings.store-file=${path.join(dataDir, 'ai-settings.json')}`,
     `--ai.session.store-file=${path.join(dataDir, 'ai-sessions.json')}`,
+    `--codekit.fs.workspace-root=${os.homedir()}`,
     '--spring.profiles.active=electron'
   ], {
-    cwd: app.getPath('userData'),
-    env: {
-      ...process.env,
-      CODEKIT_AI_PROVIDER: process.env.CODEKIT_AI_PROVIDER || 'mock',
-      CODEKIT_AI_API_KEY: process.env.CODEKIT_AI_API_KEY || '',
-      CODEKIT_DB_URL: process.env.CODEKIT_DB_URL || 'jdbc:mysql://localhost:3306/codekit?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true',
-      CODEKIT_DB_USERNAME: process.env.CODEKIT_DB_USERNAME || 'root',
-      CODEKIT_DB_PASSWORD: process.env.CODEKIT_DB_PASSWORD || '12345678',
-      CODEKIT_REDIS_HOST: process.env.CODEKIT_REDIS_HOST || 'localhost'
-    }
+    cwd: dataDir,
+    env: { ...process.env }
   })
 
-  backendProcess.stdout.on('data', (data) => console.log(`[后端] ${data.toString().trim()}`))
-  backendProcess.stderr.on('data', (data) => console.error(`[后端] ${data.toString().trim()}`))
-  backendProcess.on('close', (code) => console.log(`后端进程退出: ${code}`))
+  backendProcess.stdout.on('data', (data) => { const s = data.toString(); console.log(s); logStream.write(s) })
+  backendProcess.stderr.on('data', (data) => { const s = data.toString(); console.error(s); logStream.write(s) })
+  backendProcess.on('close', (code) => { console.log(`后端退出: ${code}`); logStream.end() })
+  backendProcess.on('error', (err) => {
+    console.error(`后端启动失败: ${err.message}`)
+    logStream.write(`启动失败: ${err.message}\n`)
+    logStream.end()
+    dialog.showErrorBox('启动失败', `无法启动后端\n\n${err.message}\n\n请确认已安装 JDK 21:\nbrew install openjdk@21`)
+    app.quit()
+  })
 }
 
 function createWindow() {

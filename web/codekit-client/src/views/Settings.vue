@@ -353,7 +353,6 @@ onMounted(async () => {
     settings.embeddingApiKey = data.embeddingApiKey || ''
   } catch (e) {
     console.error('加载设置失败:', e)
-    ElMessage.warning('无法加载设置，请确认后端已启动')
   } finally {
     store.loading = false
   }

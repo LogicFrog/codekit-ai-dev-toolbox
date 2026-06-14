@@ -157,7 +157,7 @@ public class SearchServiceImpl implements SearchService {
             return emptyPage(buildPageable(request));
         }
 
-        List<Long> sortedIds = vectorIndexService.searchTopKByText(request.getKeyword(), 100, candidateIds);
+        List<Long> sortedIds = vectorIndexService.searchTopKByText(request.getKeyword(), 20, candidateIds);
         if (sortedIds.isEmpty()) {
             return emptyPage(buildPageable(request));
         }

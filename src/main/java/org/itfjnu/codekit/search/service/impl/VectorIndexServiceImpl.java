@@ -70,8 +70,8 @@ public class VectorIndexServiceImpl implements VectorIndexService {
             codeEmbeddingRepository.save(em);
             return true;
         } catch (Exception e) {
-            log.error("向量更新失败", e);
-            throw new BusinessException(ErrorCode.SEARCH_INDEX_UPDATE_FAILED);
+            log.warn("向量更新失败（嵌入服务可能未配置），跳过: {}", e.getMessage());
+            return false;
         }
     }
 
@@ -82,7 +82,8 @@ public class VectorIndexServiceImpl implements VectorIndexService {
             codeEmbeddingRepository.deleteBySnippetId(snippetId);
             return true;
         } catch (Exception e) {
-            throw new BusinessException(ErrorCode.SEARCH_INDEX_UPDATE_FAILED);
+            log.warn("删除向量嵌入失败: {}", e.getMessage());
+            return false;
         }
     }
 

@@ -84,6 +84,14 @@
                   text
                   size="small"
                   class="node-action"
+                  @click.stop="handleCategoryScan(folder.category.id)"
+                >
+                  <el-icon><Search /></el-icon>
+                </el-button>
+                <el-button
+                  text
+                  size="small"
+                  class="node-action"
                   @click.stop="openImportDialog(folder.category.id)"
                 >
                   <el-icon><Upload /></el-icon>
@@ -542,6 +550,12 @@ function handleScanRowDblClick(row: FsItem) {
 function handleConfirmScanDir() {
   scanDir.value = scanPath.value
   showScanExplorer.value = false
+  if (scanTargetCategory) {
+    store.doScan(scanTargetCategory)
+    scanTargetCategory = undefined
+  } else {
+    handleScan()
+  }
 }
 
 function handleGoUp() {
@@ -563,6 +577,15 @@ function handleSelectFile(row: FsItem) {
 function handleDetailCategoryChange(categoryId: number | null) {
   if (!currentCode.value) return
   currentCode.value.category = categories.value.find(item => item.id === categoryId) || null
+}
+
+let scanTargetCategory: number | undefined
+
+function handleCategoryScan(categoryId: number) {
+  scanTargetCategory = categoryId
+  scanPath.value = '/'
+  loadScanDirectory('/')
+  showScanExplorer.value = true
 }
 
 onMounted(async () => {

@@ -111,7 +111,7 @@ interface ChatStreamCallbacks {
  */
 export const aiChatStream = async (data: AIChatRequest, callbacks: ChatStreamCallbacks): Promise<void> => {
   const baseUrl = typeof window !== 'undefined' && window.navigator.userAgent.includes('Electron')
-    ? 'http://localhost:8080' : ''
+    ? 'http://localhost:18080' : ''
   const response = await fetch(`${baseUrl}/api/ai/chat/stream`, {
     method: 'POST',
     headers: {

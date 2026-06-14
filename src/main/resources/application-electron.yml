@@ -4,7 +4,7 @@ spring:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
 
   datasource:
-    url: jdbc:h2:file:${user.home}/.codekit/data/codekit;AUTO_SERVER=TRUE;MODE=MySQL
+    url: jdbc:h2:file:${user.home}/.codekit/data/codekit;AUTO_SERVER=TRUE
     username: sa
     password:
     driver-class-name: org.h2.Driver
@@ -14,10 +14,15 @@ spring:
       ddl-auto: update
     show-sql: false
     open-in-view: false
-    database-platform: org.hibernate.dialect.H2Dialect
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+server:
+  port: 18080
 
 ai:
-  provider: mock
+  provider: real
   settings:
     store-file: ${user.home}/.codekit/data/ai-settings.json
   session:

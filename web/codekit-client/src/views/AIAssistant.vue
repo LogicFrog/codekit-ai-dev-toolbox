@@ -586,7 +586,6 @@ const handleSaveTemperature = async () => {
   try {
     const saved = await setAiTemperature(Number(temperature.value.toFixed(1)))
     temperature.value = Number(saved.toFixed(1))
-    ElMessage.success(`温度已更新为 ${temperature.value.toFixed(1)}`)
   } catch (error: any) {
     ElMessage.error(extractErrorMessage(error, '温度设置失败'))
   } finally {
@@ -598,15 +597,12 @@ const handleSaveTemperature = async () => {
 const handleSubmit = async () => {
   // 验证输入
   if (mode.value === 'chat' && !form.question.trim()) {
-    ElMessage.warning('请输入问题')
     return
   }
   if (mode.value === 'agent' && !form.question.trim()) {
-    ElMessage.warning('请输入 Agent 指令')
     return
   }
   if (mode.value === 'explain' && !form.code?.trim()) {
-    ElMessage.warning('请输入需要解释的代码')
     return
   }
 
@@ -714,7 +710,6 @@ const handleNewChat = async () => {
 const copyCode = async (code: string) => {
   const success = await copyToClipboard(code)
   if (success) {
-    ElMessage.success('代码已复制')
   } else {
     ElMessage.error('复制失败')
   }
@@ -747,7 +742,6 @@ const copyDetailCode = async () => {
     const codeToCopy = fullCodeContent.value || selectedSearchItem.value.codePreview || ''
     const success = await copyToClipboard(codeToCopy)
     if (success) {
-      ElMessage.success('代码已复制')
     } else {
       ElMessage.error('复制失败')
     }

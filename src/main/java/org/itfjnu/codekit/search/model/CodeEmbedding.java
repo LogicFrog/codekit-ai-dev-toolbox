@@ -21,7 +21,8 @@ public class CodeEmbedding {
     @Column(name = "snippet_id", nullable = false, unique = true)
     private Long snippetId;
 
-    @Column(name = "embedding_json", nullable = false, columnDefinition = "longtext")
+    @Lob
+    @Column(name = "embedding_json", nullable = false)
     private String embeddingJson;
 
     @Column(name = "embedding_dim", nullable = false)

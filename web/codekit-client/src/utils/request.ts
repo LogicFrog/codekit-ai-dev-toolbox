@@ -3,7 +3,7 @@ import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse 
 const isElectron = typeof window !== 'undefined' && window.navigator.userAgent.includes('Electron')
 
 const instance: AxiosInstance = axios.create({
-  baseURL: isElectron ? 'http://localhost:8080/api' : '/api',
+  baseURL: isElectron ? 'http://localhost:18080/api' : '/api',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'

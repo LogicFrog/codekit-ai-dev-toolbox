@@ -68,7 +68,18 @@ public class RuleBasedAgentPlannerImpl implements AgentPlanner {
                     .build());
         }
 
-        if (needExplain) {
+        if (needExplain && needOptimize) {
+            // 解释+优化合并：一次 LLM 调用同时完成解释和优化，减少等待时间
+            Map<String, Object> params = new HashMap<>();
+            params.put("optimizeType", "explain_and_optimize");
+            params.put("question", text);
+
+            tasks.add(AgentTask.builder()
+                    .taskName("代码解释与优化分析")
+                    .skillName("code_optimize")
+                    .params(params)
+                    .build());
+        } else if (needExplain) {
             Map<String, Object> params = new HashMap<>();
             params.put("question", text);
 
@@ -77,16 +88,14 @@ public class RuleBasedAgentPlannerImpl implements AgentPlanner {
                     .skillName("ai_explain")
                     .params(params)
                     .build());
-        }
-
-        if (needOptimize) {
+        } else if (needOptimize) {
             Map<String, Object> params = new HashMap<>();
             String optimizeType = extractOptimizeType(text);
             params.put("optimizeType", optimizeType);
             params.put("question", text);
 
-            // 先搜索相关代码（除非用户明确有不需要搜索的关键词）
-            if (!containsAny(text, "直接优化")) {
+            // 先搜索相关代码（除非用户明确有不需要搜索的关键词，或前面已有搜索任务）
+            if (!containsAny(text, "直接优化") && tasks.stream().noneMatch(t -> "code_search".equals(t.getSkillName()))) {
                 Map<String, Object> searchParams = new HashMap<>();
                 String keyword = extractSearchKeyword(text);
                 searchParams.put("keyword", keyword);

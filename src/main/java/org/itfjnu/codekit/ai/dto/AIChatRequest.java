@@ -18,4 +18,7 @@ public class AIChatRequest {
 
     @Schema(description = "会话ID，用于上下文关联", example = "session-123")
     private String sessionId;
+
+    @Schema(description = "优化类型：performance/readability/bugfix/all/explain_and_optimize", example = "all")
+    private String optimizeType;
 }

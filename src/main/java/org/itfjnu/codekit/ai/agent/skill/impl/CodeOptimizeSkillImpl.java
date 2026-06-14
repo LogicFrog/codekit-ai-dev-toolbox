@@ -69,6 +69,7 @@ public class CodeOptimizeSkillImpl implements Skill {
             req.setCode(code);
             req.setLanguageType(language);
             req.setQuestion(question);
+            req.setOptimizeType(optimizeType);
 
             AIChatResponse resp = aiService.optimize(req);
 

@@ -7,7 +7,7 @@
 | code_search     | 语义/关键词搜索代码片段                         | keyword: 搜索关键词（支持文件名如 UserService.java）, mode: 检索模式(semantic 语义检索 / keyword 关键词检索), fallbackKeyword: 备用关键词 |
 | rag_retrieve    | RAG 语义检索（纯向量检索，可设相似度阈值）        | query: 自然语言查询, topK: 返回数量(默认5), minScore: 最低相似度(0~1,默认0), languageType: 可选语言过滤, tag: 可选标签过滤 |
 | ai_explain      | 解释代码逻辑、功能与潜在风险                     | question: 解释需求描述, code: 可选，完整代码内容, languageType: 可选，编程语言（如 Java、Python、TypeScript）               |
-| code_optimize   | 代码优化（性能、可读性、Bug修复、综合）           | optimizeType: 优化类型(performance 性能 / readability 可读性 / bugfix Bug修复 / all 综合优化), question: 优化需求, code: 可选 |
+| code_optimize   | 代码优化（性能、可读性、Bug修复、综合、解释+优化合并） | optimizeType: 优化类型(performance 性能 / readability 可读性 / bugfix Bug修复 / all 综合优化 / explain_and_optimize 解释并优化合并), question: 优化需求, code: 可选 |
 | git_compare     | 对比两个版本的代码差异并由 AI 分析               | snippetId: 可选（代码片段ID，未指定时从上下文获取）, versionA: 可选旧版本ID, versionB: 可选新版本ID，默认对比最新两个版本 |
 | version_list    | 列出代码片段的所有历史版本                       | snippetId: 可选（代码片段ID，未指定时从上下文获取）                                                                     |
 
@@ -27,6 +27,7 @@
 7. 提取指令中的文件名（如 UserService.java、CategoryService.java）作为 code_search 的 keyword
 8. 提取指令中的 snippetId（如 snippetId=5、snippetId:10）填入对应参数
 9. "直接优化" 等明确表示不需要先搜索的意图，可直接执行 code_optimize
+10. 当用户同时要求"解释"和"优化"时，使用 code_optimize 的 explain_and_optimize 类型合并为一次任务，避免拆分两个 AI Skill 增加耗时
 
 输出格式要求：
 请严格输出以下 JSON 格式（不要包含 markdown 代码块标记，不要包含任何额外解释文字，只输出纯 JSON）：
@@ -41,6 +42,9 @@
 
 示例 3 - 用户输入："对比 snippetId=3 的两个最新版本差异"
 输出：{"tasks":[{"taskName":"版本对比分析","skillName":"git_compare","params":{"snippetId":3}}]}
+
+示例 3.5 - 用户输入："帮我找到令牌相关的代码 解释其功能 并告诉我是否有优化的空间"
+输出：{"tasks":[{"taskName":"搜索令牌相关代码","skillName":"code_search","params":{"keyword":"令牌","mode":"semantic","fallbackKeyword":"token"}},{"taskName":"解释并优化令牌代码","skillName":"code_optimize","params":{"optimizeType":"explain_and_optimize","question":"帮我找到令牌相关的代码 解释其功能 并告诉我是否有优化的空间"}}]}
 
 示例 4 - 用户输入："检索所有关于用户认证的代码并分析安全性"
 输出：{"tasks":[{"taskName":"语义搜索认证相关代码","skillName":"code_search","params":{"keyword":"用户认证","mode":"semantic","fallbackKeyword":"认证 登录"}},{"taskName":"安全风险分析","skillName":"ai_explain","params":{"question":"分析用户认证代码的安全性"}}]}

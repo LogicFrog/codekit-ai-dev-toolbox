@@ -30,6 +30,20 @@ public enum PromptTemplateType {
         "请全面优化这段代码，从性能、可读性、安全性三个方面进行优化，给出具体的优化建议和优化后的代码。\n\n" +
         "```{languageType}\n{code}\n```"),
 
+    CODE_COMBINED_EXPLAIN_OPTIMIZE("code-combined-explain-optimize.txt",
+        "请对以下{languageType}代码进行全面的解释和优化分析，分两部分回答：\n\n" +
+        "## 第一部分：代码解释\n" +
+        "1. 代码的主要功能和目的\n" +
+        "2. 关键逻辑和算法\n" +
+        "3. 重要的类、方法和变量\n" +
+        "4. 潜在的风险和问题\n\n" +
+        "## 第二部分：优化建议\n" +
+        "请从性能、可读性、安全性三个方面进行优化，给出：\n" +
+        "1. 具体的优化建议\n" +
+        "2. 关键代码的优化前后对比\n" +
+        "3. 优先级的排序（高/中/低）\n\n" +
+        "```{languageType}\n{code}\n```"),
+
     VERSION_ANALYZE("version-analyze.txt",
         "你是资深代码评审工程师。请基于两个版本差异进行分析。\n" +
         "要求：\n" +
@@ -49,7 +63,7 @@ public enum PromptTemplateType {
         "| code_search     | 语义/关键词搜索代码片段                         | keyword: 搜索关键词（支持文件名如 UserService.java）, mode: 检索模式(semantic 语义检索 / keyword 关键词检索), fallbackKeyword: 备用关键词 |\n" +
         "| rag_retrieve    | RAG 语义检索（纯向量检索，可设相似度阈值）        | query: 自然语言查询, topK: 返回数量(默认5), minScore: 最低相似度(0~1,默认0), languageType: 可选语言过滤, tag: 可选标签过滤 |\n" +
         "| ai_explain      | 解释代码逻辑、功能与潜在风险                     | question: 解释需求描述, code: 可选，完整代码内容, languageType: 可选，编程语言（如 Java、Python、TypeScript）               |\n" +
-        "| code_optimize   | 代码优化（性能、可读性、Bug修复、综合）           | optimizeType: 优化类型(performance 性能 / readability 可读性 / bugfix Bug修复 / all 综合优化), question: 优化需求, code: 可选 |\n" +
+        "| code_optimize   | 代码优化（性能、可读性、Bug修复、综合、解释+优化合并） | optimizeType: 优化类型(performance 性能 / readability 可读性 / bugfix Bug修复 / all 综合优化 / explain_and_optimize 解释并优化合并), question: 优化需求, code: 可选 |\n" +
         "| git_compare     | 对比两个版本的代码差异并由 AI 分析               | snippetId: 可选（代码片段ID，未指定时从上下文获取）, versionA: 可选旧版本ID, versionB: 可选新版本ID，默认对比最新两个版本 |\n" +
         "| version_list    | 列出代码片段的所有历史版本                       | snippetId: 可选（代码片段ID，未指定时从上下文获取）                                                                     |\n\n" +
         "规划规则（严格遵守）：\n" +
@@ -67,7 +81,8 @@ public enum PromptTemplateType {
         "   - 如果没指定，先执行 code_search，再执行 version_list\n" +
         "7. 提取指令中的文件名（如 UserService.java、CategoryService.java）作为 code_search 的 keyword\n" +
         "8. 提取指令中的 snippetId（如 snippetId=5、snippetId:10）填入对应参数\n" +
-        "9. \"直接优化\" 等明确表示不需要先搜索的意图，可直接执行 code_optimize\n\n" +
+        "9. \"直接优化\" 等明确表示不需要先搜索的意图，可直接执行 code_optimize\n" +
+        "10. 当用户同时要求\"解释\"和\"优化\"时，使用 code_optimize 的 explain_and_optimize 类型合并为一次任务，避免拆分两个 AI Skill 增加耗时\n\n" +
         "输出格式要求：\n" +
         "请严格输出以下 JSON 格式（不要包含 markdown 代码块标记，不要包含任何额外解释文字，只输出纯 JSON）：\n\n" +
         "{\"tasks\":[{\"taskName\":\"任务的简要描述\",\"skillName\":\"Skill名称\",\"params\":{\"参数名\":\"参数值\"}}]}\n\n" +

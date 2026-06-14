@@ -98,6 +98,12 @@ export const createVersion = (snippetId: number, versionReq: CreateVersionReques
   return request.post<VersionInfo>(`/code/${snippetId}/create-version`, versionReq)
 }
 
+export const assignCategory = (snippetId: number, categoryId: number): Promise<CodeSnippet> => {
+  return request.put<CodeSnippet>(`/code/${snippetId}/category`, undefined, {
+    params: { categoryId }
+  })
+}
+
 export const listVersions = (id: number): Promise<VersionInfo[]> => {
   return request.get<VersionInfo[]>(`/code/${id}/versions`)
 }

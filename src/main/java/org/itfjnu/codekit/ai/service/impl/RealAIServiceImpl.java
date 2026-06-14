@@ -59,6 +59,7 @@ public class RealAIServiceImpl implements AIService {
             "建议", "改进", "优化", "注意", "可以"
     );
     private static final int DEFAULT_CONTEXT_TOKEN_BUDGET = 4096;
+    private static final int MAX_CODE_LENGTH = 3000;
 
     private volatile RestClient restClient;
 
@@ -198,6 +199,30 @@ public class RealAIServiceImpl implements AIService {
         log.info("explain 请求处理成功，提取到 {} 条建议", suggestions.size());
         return AIChatResponse.builder()
                 .answer(answer)
+                .suggestions(suggestions)
+                .build();
+    }
+
+    @Override
+    public AIChatResponse explainStream(AIChatRequest request, java.util.function.Consumer<String> chunkConsumer) {
+        log.info("开始处理 explain 流式请求，代码语言: {}", request.getLanguageType());
+
+        if (!aiProperties.isConfigured()) {
+            log.warn("API Key 未配置");
+            throw new ServiceException(CONFIG_ERROR, "API Key 未配置。请在设置页面中配置 API Key 和模型");
+        }
+
+        String prompt = buildExplainPrompt(request);
+        StringBuilder fullAnswer = new StringBuilder();
+        callLLMAPIStream(prompt, chunk -> {
+            fullAnswer.append(chunk);
+            chunkConsumer.accept(chunk);
+        });
+
+        List<String> suggestions = extractSuggestions(fullAnswer.toString());
+        log.info("explain 流式请求处理成功，提取到 {} 条建议", suggestions.size());
+        return AIChatResponse.builder()
+                .answer(fullAnswer.toString())
                 .suggestions(suggestions)
                 .build();
     }
@@ -394,7 +419,7 @@ public class RealAIServiceImpl implements AIService {
     private String buildExplainPrompt(AIChatRequest request) {
         Map<String, Object> vars = new java.util.HashMap<>();
         vars.put("languageType", request.getLanguageType() != null ? request.getLanguageType() : "");
-        vars.put("code", request.getCode() != null ? request.getCode() : "");
+        vars.put("code", truncateCode(request.getCode()));
         return promptTemplateService.render(PromptTemplateType.CODE_EXPLAIN, vars);
     }
 
@@ -403,12 +428,20 @@ public class RealAIServiceImpl implements AIService {
             case "performance" -> PromptTemplateType.CODE_OPTIMIZE_PERFORMANCE;
             case "readability" -> PromptTemplateType.CODE_OPTIMIZE_READABILITY;
             case "bugfix" -> PromptTemplateType.CODE_OPTIMIZE_BUGFIX;
+            case "explain_and_optimize" -> PromptTemplateType.CODE_COMBINED_EXPLAIN_OPTIMIZE;
             default -> PromptTemplateType.CODE_OPTIMIZE_ALL;
         };
         Map<String, Object> vars = new java.util.HashMap<>();
         vars.put("languageType", request.getLanguageType() != null ? request.getLanguageType() : "Java");
-        vars.put("code", request.getCode() != null ? request.getCode() : "");
+        vars.put("code", truncateCode(request.getCode()));
         return promptTemplateService.render(type, vars);
+    }
+
+    private String truncateCode(String code) {
+        if (code == null || code.length() <= MAX_CODE_LENGTH) {
+            return code == null ? "" : code;
+        }
+        return code.substring(0, MAX_CODE_LENGTH) + "\n// ... (代码已截断，原文共 " + code.length() + " 字符)";
     }
 
     /**
@@ -461,18 +494,7 @@ public class RealAIServiceImpl implements AIService {
             throw new ServiceException(CONFIG_ERROR, "API Key 未配置。请在设置页面中配置 API Key 和模型");
         }
 
-        String optimizeType = "all";
-        String question = request.getQuestion();
-        if (question != null) {
-            String lower = question.toLowerCase();
-            if (lower.contains("性能") || lower.contains("performance")) {
-                optimizeType = "performance";
-            } else if (lower.contains("可读性") || lower.contains("readability")) {
-                optimizeType = "readability";
-            } else if (lower.contains("bug") || lower.contains("修复")) {
-                optimizeType = "bugfix";
-            }
-        }
+        String optimizeType = resolveOptimizeType(request);
 
         String prompt = buildOptimizePrompt(request, optimizeType);
         String answer = callLLMAPI(prompt);
@@ -484,6 +506,50 @@ public class RealAIServiceImpl implements AIService {
                 .answer(answer)
                 .suggestions(suggestions)
                 .build();
+    }
+
+    @Override
+    public AIChatResponse optimizeStream(AIChatRequest request, java.util.function.Consumer<String> chunkConsumer) {
+        log.info("开始处理 optimize 流式请求，代码语言: {}", request.getLanguageType());
+
+        if (!aiProperties.isConfigured()) {
+            log.warn("API Key 未配置");
+            throw new ServiceException(CONFIG_ERROR, "API Key 未配置。请在设置页面中配置 API Key 和模型");
+        }
+
+        String optimizeType = resolveOptimizeType(request);
+
+        String prompt = buildOptimizePrompt(request, optimizeType);
+        StringBuilder fullAnswer = new StringBuilder();
+        callLLMAPIStream(prompt, chunk -> {
+            fullAnswer.append(chunk);
+            chunkConsumer.accept(chunk);
+        });
+
+        List<String> suggestions = extractSuggestions(fullAnswer.toString());
+        log.info("optimize 流式请求处理成功，优化类型: {}", optimizeType);
+        return AIChatResponse.builder()
+                .answer(fullAnswer.toString())
+                .suggestions(suggestions)
+                .build();
+    }
+
+    private String resolveOptimizeType(AIChatRequest request) {
+        if (request.getOptimizeType() != null && !request.getOptimizeType().isBlank()) {
+            return request.getOptimizeType().trim().toLowerCase();
+        }
+        String question = request.getQuestion();
+        if (question != null) {
+            String lower = question.toLowerCase();
+            if (lower.contains("性能") || lower.contains("performance")) {
+                return "performance";
+            } else if (lower.contains("可读性") || lower.contains("readability")) {
+                return "readability";
+            } else if (lower.contains("bug") || lower.contains("修复")) {
+                return "bugfix";
+            }
+        }
+        return "all";
     }
 
     /**

@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -40,7 +41,8 @@ public class CodeSnippet {
     @Column(name = "file_name", nullable = false)
     private String fileName; // 文件名，非空
 
-    @Column(name = "code_content", columnDefinition = "LONGTEXT")
+    @Lob
+    @Column(name = "code_content")
     private String codeContent; // 代码内容，长文本
 
     @Column(name = "language_type")

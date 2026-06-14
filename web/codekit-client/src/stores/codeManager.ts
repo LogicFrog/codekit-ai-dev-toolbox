@@ -4,10 +4,10 @@ import type { CodeCategory, CodeSnippet, FsItem } from '@/types'
 import {
   getAllCodeSnippets, listCategories, saveCodeSnippet, deleteCodeSnippet,
   saveCodeSnippetByPath, createCategory, renameCategory, deleteCategory,
-  scanLocalCode, getScanStatus, createVersion, listCodeDependencies
+  scanLocalCode, getScanStatus, createVersion, listCodeDependencies, assignCategory
 } from '@/api/code'
 import { listFs } from '@/api/system'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import { extractErrorMessage } from '@/utils/helpers'
 
 export const useCodeManagerStore = defineStore('codeManager', () => {
@@ -125,23 +125,30 @@ export const useCodeManagerStore = defineStore('codeManager', () => {
     }
   }
 
-  async function doScan() {
+  let pendingScanCategory: number | undefined
+
+  async function doScan(categoryId?: number) {
     if (!scanDir.value) {
-      ElMessage.warning('请输入扫描目录')
       return
     }
     scanning.value = true
     try {
       await scanLocalCode(scanDir.value)
-      ElMessage.info('扫描任务已启动')
       const pollInterval = setInterval(async () => {
         try {
           const status = await getScanStatus(scanDir.value)
           if (status.status === 'COMPLETED') {
             clearInterval(pollInterval)
             scanning.value = false
-            ElMessage.success('扫描完成')
             await Promise.all([refreshCategories(), refreshList()])
+            if (categoryId) {
+              for (const item of codeList.value) {
+                if (!item.category?.id) {
+                  try { await assignCategory(item.id, categoryId) } catch { /* ignore */ }
+                }
+              }
+              await refreshList()
+            }
           } else if (status.status === 'FAILED') {
             clearInterval(pollInterval)
             scanning.value = false
@@ -160,7 +167,6 @@ export const useCodeManagerStore = defineStore('codeManager', () => {
 
   async function doImport() {
     if (!importForm.filePath) {
-      ElMessage.warning('请选择文件')
       return
     }
     loading.import = true
@@ -171,7 +177,6 @@ export const useCodeManagerStore = defineStore('codeManager', () => {
         importForm.tag || undefined,
         importForm.categoryId
       )
-      ElMessage.success('导入成功')
       showImportDialog.value = false
       resetImportForm()
       await Promise.all([refreshCategories(), refreshList()])
@@ -195,7 +200,6 @@ export const useCodeManagerStore = defineStore('codeManager', () => {
       const saved = await saveCodeSnippet(payload)
       currentCode.value = { ...saved, dependencies: currentCode.value.dependencies || [] }
       selectedDetailCategoryId.value = saved.category?.id ?? null
-      ElMessage.success('保存成功')
       await Promise.all([refreshCategories(), refreshList()])
     } catch (error) {
       ElMessage.error(extractErrorMessage(error, '保存失败'))
@@ -210,7 +214,6 @@ export const useCodeManagerStore = defineStore('codeManager', () => {
       await ElMessageBox.confirm('确定要删除该代码片段吗？', '确认删除', { type: 'warning' })
       await deleteCodeSnippet(currentCode.value.id)
       currentCode.value = null
-      ElMessage.success('删除成功')
       await Promise.all([refreshCategories(), refreshList()])
     } catch (error) {
       if (error !== 'cancel') {
@@ -226,7 +229,6 @@ export const useCodeManagerStore = defineStore('codeManager', () => {
         versionName: `v${Date.now()}`,
         description: '手动创建版本'
       })
-      ElMessage.success('版本创建成功')
     } catch (error) {
       ElMessage.error(extractErrorMessage(error, '创建版本失败'))
     }
@@ -235,7 +237,6 @@ export const useCodeManagerStore = defineStore('codeManager', () => {
   async function doCreateCategory() {
     const name = newCategoryName.value.trim()
     if (!name) {
-      ElMessage.warning('请输入分类名称')
       return
     }
     loading.categories = true
@@ -246,7 +247,6 @@ export const useCodeManagerStore = defineStore('codeManager', () => {
         ? await renameCategory(editingId as number, name)
         : await createCategory(name)
       await refreshCategories()
-      ElMessage.success(isEditing ? '分类已重命名' : '分类创建成功')
       expandedCategoryIds.value = [...expandedCategoryIds.value, category.id]
       closeCategoryDialog()
       if (!isEditing && importForm.categoryId == null) {
@@ -272,7 +272,6 @@ export const useCodeManagerStore = defineStore('codeManager', () => {
         selectedDetailCategoryId.value = null
         if (currentCode.value) currentCode.value.category = null
       }
-      ElMessage.success('分类已删除')
       await Promise.all([refreshCategories(), refreshList()])
     } catch (error) {
       if (error !== 'cancel') {

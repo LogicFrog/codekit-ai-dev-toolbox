@@ -108,7 +108,6 @@ export const useVersionControlStore = defineStore('versionControl', () => {
         { type: 'warning' }
       )
       await rollbackVersion(selectedSnippetId.value, versionA.value)
-      ElMessage.success('回滚成功')
       await fetchVersions(selectedSnippetId.value)
     } catch (error) {
       if (error === 'cancel' || error === 'close') return
@@ -118,7 +117,6 @@ export const useVersionControlStore = defineStore('versionControl', () => {
 
   async function doAiAnalyze() {
     if (!selectedSnippetId.value || !versionA.value || !versionB.value) {
-      ElMessage.warning('请先选择两个版本')
       return
     }
     analyzing.value = true
@@ -137,7 +135,6 @@ export const useVersionControlStore = defineStore('versionControl', () => {
 
   async function doCreateVersion() {
     if (!selectedSnippetId.value || !createVersionForm.value.versionName.trim()) {
-      ElMessage.warning('请输入版本名称')
       return
     }
     creating.value = true
@@ -146,7 +143,6 @@ export const useVersionControlStore = defineStore('versionControl', () => {
         versionName: createVersionForm.value.versionName,
         description: createVersionForm.value.description
       })
-      ElMessage.success('版本创建成功')
       showCreateDialog.value = false
       createVersionForm.value.versionName = ''
       createVersionForm.value.description = ''

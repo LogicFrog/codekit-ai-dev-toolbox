@@ -3,7 +3,6 @@ import { ref, reactive } from 'vue'
 import type { SearchResponse, SearchHistory, CodeSnippet } from '@/types'
 import { keywordSearch, semanticSearch, getHotKeywords, getSearchHistory } from '@/api/search'
 import { getAllCodeSnippets, getCodeSnippet } from '@/api/code'
-import { ElMessage } from 'element-plus'
 import { extractErrorMessage, copyToClipboard } from '@/utils/helpers'
 
 export const useSearchStore = defineStore('search', () => {
@@ -33,7 +32,6 @@ export const useSearchStore = defineStore('search', () => {
 
   async function doSearch() {
     if (!searchForm.keyword.trim() && !searchForm.language && !searchForm.tag) {
-      ElMessage.warning('请输入搜索关键词或选择语言/标签')
       return
     }
     currentPage.value = 1
@@ -96,12 +94,7 @@ export const useSearchStore = defineStore('search', () => {
     copying.value = true
     try {
       const code = fullCodeContent.value || selectedResult.value.codePreview || ''
-      const ok = await copyToClipboard(code)
-      if (ok) {
-        ElMessage.success('代码已复制')
-      } else {
-        ElMessage.error('复制失败')
-      }
+      await copyToClipboard(code)
     } finally {
       copying.value = false
     }
