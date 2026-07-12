@@ -7,8 +7,10 @@ import org.itfjnu.codekit.code.repository.CodeCategoryRepository;
 import org.itfjnu.codekit.code.repository.CodeSnippetRepository;
 import org.itfjnu.codekit.code.service.CodeCategoryService;
 import org.itfjnu.codekit.common.dto.ErrorCode;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.itfjnu.codekit.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -97,7 +99,8 @@ public class CodeCategoryServiceImpl implements CodeCategoryService {
 
     @Override
     public CodeCategory getDefaultCategory() {
-        return ensureDefaultCategoryExists();
+        CodeCategory category = ensureDefaultCategoryExists();
+        return codeCategoryRepository.findById(category.getId()).orElse(category);
     }
 
     private CodeCategory getCategoryOrThrow(Long categoryId) {
@@ -105,13 +108,19 @@ public class CodeCategoryServiceImpl implements CodeCategoryService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "分类不存在，ID: " + categoryId));
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     private CodeCategory ensureDefaultCategoryExists() {
-        return codeCategoryRepository.findByCategoryName(DEFAULT_CATEGORY_NAME)
-                .orElseGet(() -> {
-                    CodeCategory category = new CodeCategory();
-                    category.setCategoryName(DEFAULT_CATEGORY_NAME);
-                    category.setSortOrder(999);
-                    return codeCategoryRepository.save(category);
-                });
+        try {
+            return codeCategoryRepository.findByCategoryName(DEFAULT_CATEGORY_NAME)
+                    .orElseGet(() -> {
+                        CodeCategory category = new CodeCategory();
+                        category.setCategoryName(DEFAULT_CATEGORY_NAME);
+                        category.setSortOrder(999);
+                        return codeCategoryRepository.save(category);
+                    });
+        } catch (DataIntegrityViolationException e) {
+            return codeCategoryRepository.findByCategoryName(DEFAULT_CATEGORY_NAME)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.SERVER_ERROR, "无法创建默认分类"));
+        }
     }
 }

@@ -42,7 +42,7 @@ public class CodeSnippet {
     private String fileName; // 文件名，非空
 
     @Lob
-    @Column(name = "code_content")
+    @Column(name = "code_content", columnDefinition = "LONGTEXT")
     private String codeContent; // 代码内容，长文本
 
     @Column(name = "language_type")

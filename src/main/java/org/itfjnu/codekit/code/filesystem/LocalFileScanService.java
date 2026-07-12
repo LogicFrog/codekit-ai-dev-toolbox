@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Phaser;
+import java.util.concurrent.Semaphore;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +28,7 @@ public class LocalFileScanService {
     private final CodeSnippetService codeSnippetService;
     private final CodeFileProcessor codeFileProcessor;
     private final ScanTaskTracker scanTaskTracker;
+    private final Semaphore dbSemaphore = new Semaphore(5);
 
     // 使用 JDK 21 虚拟线程执行器：为每个扫描任务分配轻量级虚拟线程
     private final ExecutorService scanExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -150,7 +152,12 @@ public class LocalFileScanService {
                 phaser.register();
                 scanExecutor.submit(() -> {
                     try {
-                        codeFileProcessor.processFile(file, rootDir, null, null, null);
+                        dbSemaphore.acquire();
+                        try {
+                            codeFileProcessor.processFile(file, rootDir, null, null, null);
+                        } finally {
+                            dbSemaphore.release();
+                        }
                     } catch (Exception e) {
                         log.error("扫描文件失败：{}", file.getAbsolutePath(), e);
                         scanTaskTracker.markFailed(rootDir);

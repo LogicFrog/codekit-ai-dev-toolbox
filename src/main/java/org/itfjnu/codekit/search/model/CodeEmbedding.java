@@ -22,7 +22,7 @@ public class CodeEmbedding {
     private Long snippetId;
 
     @Lob
-    @Column(name = "embedding_json", nullable = false)
+    @Column(name = "embedding_json", nullable = false, columnDefinition = "LONGTEXT")
     private String embeddingJson;
 
     @Column(name = "embedding_dim", nullable = false)
